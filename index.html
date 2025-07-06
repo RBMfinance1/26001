@@ -516,6 +516,21 @@
       border: 1px solid #e9ecef;
     }
     
+    .photo-upload {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .photo-upload input[type="file"] {
+      flex: 1;
+      padding: 8px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    
     .photo-button {
       background: #17a2b8;
       color: white;
@@ -524,53 +539,67 @@
       border-radius: 5px;
       cursor: pointer;
       font-size: 12px;
-      margin-left: 10px;
+      white-space: nowrap;
     }
     
     .photo-button:hover {
       background: #138496;
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(23, 162, 184, 0.3);
     }
     
     .photo-preview {
-      margin-top: 10px;
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
       gap: 10px;
+      margin-top: 10px;
     }
     
     .photo-item {
       position: relative;
-      border: 1px solid #ddd;
-      border-radius: 5px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
       overflow: hidden;
-      background: white;
+      background: #f8f9fa;
+      transition: all 0.3s ease;
+    }
+    
+    .photo-item:hover {
+      border-color: #28a745;
+      transform: scale(1.02);
     }
     
     .photo-item img {
-      width: 100px;
+      width: 100%;
       height: 100px;
       object-fit: cover;
       display: block;
     }
     
-    .photo-item .photo-remove {
+    .photo-remove {
       position: absolute;
-      top: 2px;
-      right: 2px;
-      background: #dc3545;
+      top: 5px;
+      right: 5px;
+      background: rgba(220, 53, 69, 0.9);
       color: white;
       border: none;
       border-radius: 50%;
-      width: 20px;
-      height: 20px;
+      width: 24px;
+      height: 24px;
       font-size: 12px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: all 0.3s ease;
     }
     
-    .photo-item .photo-timestamp {
+    .photo-remove:hover {
+      background: #dc3545;
+      transform: scale(1.1);
+    }
+    
+    .photo-timestamp {
       position: absolute;
       bottom: 0;
       left: 0;
@@ -580,42 +609,6 @@
       font-size: 10px;
       padding: 2px 4px;
       text-align: center;
-    }
-    
-    #photoModal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.8);
-      z-index: 1000;
-      justify-content: center;
-      align-items: center;
-    }
-    
-    .photo-modal-content {
-      background: white;
-      border-radius: 10px;
-      padding: 20px;
-      max-width: 90%;
-      max-height: 90%;
-      text-align: center;
-    }
-    
-    #photoCanvas {
-      max-width: 100%;
-      max-height: 60vh;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-    }
-    
-    #cameraVideo {
-      max-width: 100%;
-      max-height: 60vh;
-      border: 1px solid #ddd;
-      border-radius: 5px;
     }
     
     @media (max-width: 768px) {
@@ -729,10 +722,15 @@
               <input type="radio" name="shipping_mark" value="not_ok" onchange="updatePackageQualityStatus()">
               ❌ PAS OK
             </label>
-            <button class="photo-button" onclick="takePhoto('shipping_mark')">📷 Photo</button>
           </div>
           <textarea class="comment-area" id="comment_shipping_mark" placeholder="Commentaire (optionnel)..."></textarea>
-          <div class="photo-preview" id="photos_shipping_mark"></div>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_shipping_mark" accept="image/*" multiple capture="environment">
+              <button class="photo-button" onclick="addPhotos('shipping_mark')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_shipping_mark"></div>
+          </div>
         </div>
 
         <!-- Etat du colis -->
@@ -747,10 +745,15 @@
               <input type="radio" name="package_condition" value="not_ok" onchange="updatePackageQualityStatus()">
               ❌ PAS OK
             </label>
-            <button class="photo-button" onclick="takePhoto('package_condition')">📷 Photo</button>
           </div>
           <textarea class="comment-area" id="comment_package_condition" placeholder="Commentaire (optionnel)..."></textarea>
-          <div class="photo-preview" id="photos_package_condition"></div>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_package_condition" accept="image/*" multiple capture="environment">
+              <button class="photo-button" onclick="addPhotos('package_condition')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_package_condition"></div>
+          </div>
         </div>
 
         <!-- Bande de garantie -->
@@ -765,10 +768,15 @@
               <input type="radio" name="warranty_seal" value="not_ok" onchange="updatePackageQualityStatus()">
               ❌ PAS OK
             </label>
-            <button class="photo-button" onclick="takePhoto('warranty_seal')">📷 Photo</button>
           </div>
           <textarea class="comment-area" id="comment_warranty_seal" placeholder="Commentaire (optionnel)..."></textarea>
-          <div class="photo-preview" id="photos_warranty_seal"></div>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_warranty_seal" accept="image/*" multiple capture="environment">
+              <button class="photo-button" onclick="addPhotos('warranty_seal')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_warranty_seal"></div>
+          </div>
         </div>
 
       </div>
@@ -806,6 +814,13 @@
             </label>
           </div>
           <textarea class="comment-area" id="comment_zip_test" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_zip_test" accept="image/*" multiple capture="environment">
+              <button class="photo-button" onclick="addPhotos('zip_test')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_zip_test"></div>
+          </div>
         </div>
 
         <!-- Vérification boutonnage -->
@@ -826,6 +841,13 @@
             </label>
           </div>
           <textarea class="comment-area" id="comment_button_check" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_button_check" accept="image/*" multiple capture="environment">
+              <button class="photo-button" onclick="addPhotos('button_check')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_button_check"></div>
+          </div>
         </div>
 
         <!-- Contrôle Coloris -->
@@ -842,6 +864,13 @@
             </label>
           </div>
           <textarea class="comment-area" id="comment_color_check" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_color_check" accept="image/*" multiple capture="environment">
+              <button class="photo-button" onclick="addPhotos('color_check')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_color_check"></div>
+          </div>
         </div>
 
         <!-- Vérification finition/coutures -->
@@ -858,6 +887,13 @@
             </label>
           </div>
           <textarea class="comment-area" id="comment_finishing_check" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_finishing_check" accept="image/*" multiple capture="environment">
+              <button class="photo-button" onclick="addPhotos('finishing_check')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_finishing_check"></div>
+          </div>
         </div>
 
       </div>
@@ -937,6 +973,9 @@
     let checkedEans = new Set();
     let eanCodeReader = null;
     let isEanScanning = false;
+    
+    // Variables pour la gestion des photos (simplifiées)
+    let criterionPhotos = {}; // Stockage des photos par critère
 
     const COL_REF = 0;
     const COL_CODE = 1;
@@ -1281,15 +1320,18 @@
         packageQualityResults = {
           shipping_mark: {
             status: shippingMark.value,
-            comment: document.getElementById('comment_shipping_mark').value
+            comment: document.getElementById('comment_shipping_mark').value,
+            photos: criterionPhotos['shipping_mark'] || []
           },
           package_condition: {
             status: packageCondition.value,
-            comment: document.getElementById('comment_package_condition').value
+            comment: document.getElementById('comment_package_condition').value,
+            photos: criterionPhotos['package_condition'] || []
           },
           warranty_seal: {
             status: warrantySeal.value,
-            comment: document.getElementById('comment_warranty_seal').value
+            comment: document.getElementById('comment_warranty_seal').value,
+            photos: criterionPhotos['warranty_seal'] || []
           }
         };
       }
@@ -1311,19 +1353,23 @@
         productQualityResults = {
           zip_test: {
             status: zipTest.value,
-            comment: document.getElementById('comment_zip_test').value
+            comment: document.getElementById('comment_zip_test').value,
+            photos: criterionPhotos['zip_test'] || []
           },
           button_check: {
             status: buttonCheck.value,
-            comment: document.getElementById('comment_button_check').value
+            comment: document.getElementById('comment_button_check').value,
+            photos: criterionPhotos['button_check'] || []
           },
           color_check: {
             status: colorCheck.value,
-            comment: document.getElementById('comment_color_check').value
+            comment: document.getElementById('comment_color_check').value,
+            photos: criterionPhotos['color_check'] || []
           },
           finishing_check: {
             status: finishingCheck.value,
-            comment: document.getElementById('comment_finishing_check').value
+            comment: document.getElementById('comment_finishing_check').value,
+            photos: criterionPhotos['finishing_check'] || []
           }
         };
       }
@@ -1599,6 +1645,7 @@
       console.log('Référence contrôlée:', currentReference);
       console.log('EAN contrôlés:', Array.from(checkedEans));
       console.log('Liste complète des EAN de la référence:', referenceEanList);
+      console.log('Photos prises:', criterionPhotos);
 
       // Calculer les statistiques finales
       const packageIssues = Object.values(packageQualityResults).filter(result => result.status === 'not_ok').length;
@@ -1606,6 +1653,9 @@
       const totalQualityIssues = packageIssues + productIssues;
       const totalEanControlled = checkedEans.size;
       const totalEanExpected = referenceEanList.length;
+
+      // Compter le nombre total de photos
+      const totalPhotos = Object.values(criterionPhotos).reduce((total, photos) => total + photos.length, 0);
 
       const qualityStatus = totalQualityIssues === 0 ? 'CONFORME' : 'NON CONFORME';
       const eanStatus = totalEanControlled === totalEanExpected ? 'COMPLET' : 'INCOMPLET';
@@ -1618,9 +1668,11 @@
             `📋 EAN : ${eanStatus}\n` +
             `   - Contrôlés : ${totalEanControlled}/${totalEanExpected}\n` +
             `   - Référence : ${currentReference}\n\n` +
+            `📷 Photos : ${totalPhotos} photo(s) documentaire(s)\n\n` +
             `✅ Contrôle enregistré avec succès !`);
 
       // Ici vous pouvez ajouter la logique pour sauvegarder tous les résultats
+      // Les photos sont stockées en base64 dans criterionPhotos
       // Par exemple : envoi vers une API, sauvegarde locale, génération de rapport, etc.
 
       // Réinitialiser pour un nouveau contrôle
