@@ -1,1659 +1,1686 @@
-        <script>
-function loadPhotos() {
-            const savedPhotos = localStorage.getItem('productPhotos');
-            if (savedPhotos) {
-                const photosData = JSON.parse(savedPhotos);
-                Object.keys(photosData).forEach(reference => {
-                    const referenceId = reference.replace(/\s+/g, '_');
-                    productPhotos[referenceId] = photosData[reference];
-                    setTimeout(() => displayPhotos(referenceId), 200);
-                });
-            }
-        }
-
-        function resetQuality(referenceId) {
-            if (confirm('🔄 Êtes-vous sûr de vouloir réinitialiser ce contrôle qualité complet ?')) {
-                const matrix = document.querySelector(`input[name*="${referenceId}"]`).closest('.quality-matrix');
-                
-                const allInputs = matrix.querySelectorAll('input, textarea');
-                allInputs.forEach(input => {
-                    input.disabled = false;
-                    if (input.type === 'radio' || input.type === 'checkbox') {
-                        input.checked = false;
-                    } else if (input.tagName === 'TEXTAREA') {
-                        input.value = '';
-                    }
-                });
-                
-                const generalTextarea = document.getElementById(`remarks_${referenceId}`);
-                if (generalTextarea) generalTextarea.value = '';
-                
-                matrix.classList.remove('quality-validated');
-                
-                const eanCriteria = matrix.querySelectorAll('.ean-criterion');
-                eanCriteria.forEach(criterion => criterion.classList.remove('validated'));
-                
-                // Supprimer les photos
-                if (productPhotos[referenceId]) {
-                    productPhotos[referenceId] = [];
-                    displayPhotos(referenceId);
-                    savePhotos();
-                }
-                
-                // Supprimer de localStorage
-                const existingValidations = JSON.parse(localStorage.getItem('qualityValidations') || '[]');
-                const filteredValidations = existingValidations.filter(v => v.reference !== referenceId.replace(/_/g, ' '));
-                localStorage.setItem('qualityValidations', JSON.stringify(filteredValidations));
-                
-                saveEANValidations();
-                
-                alert('🔄 Contrôle qualité complet réinitialisé.');
-            }
-</script>
-        }<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Matrice Qualité</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            backdrop-filter: blur(10px);
-        }
-
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5rem;
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .search-section {
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-            padding: 25px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-            border: 1px solid #dee2e6;
-        }
-
-        .search-container {
-            display: flex;
-            gap: 15px;
-            align-items: flex-end;
-            margin-bottom: 20px;
-        }
-
-        .search-group {
-            flex: 1;
-            min-width: 200px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #495057;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e9ecef;
-            border-radius: 10px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            background: white;
-        }
-
-        input:focus, select:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-            transform: translateY(-1px);
-        }
-
-        button {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            padding: 12px 25px;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            height: fit-content;
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-        }
-
-        .stats {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: #6c757d;
-            font-size: 0.9rem;
-        }
-
-        .results-section {
-            margin-top: 30px;
-        }
-
-        .results-header {
-            background: linear-gradient(135deg, #28a745, #20c997);
-            color: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .results-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-        }
-
-        .results-count {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: 600;
-        }
-
-        .product-card {
-            background: white;
-            border: 1px solid #e9ecef;
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
-        }
-
-        .product-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
-        }
-
-        .product-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #f8f9fa;
-        }
-
-        .product-title {
-            color: #2c3e50;
-            font-size: 1.4rem;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        .product-brand {
-            color: #6c757d;
-            font-size: 1rem;
-            font-weight: 500;
-        }
-
-        .product-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .detail-item {
-            padding: 12px 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-
-        .detail-label {
-            font-weight: 600;
-            color: #495057;
-            font-size: 0.85rem;
-            margin-bottom: 4px;
-        }
-
-        .detail-value {
-            color: #2c3e50;
-            font-size: 0.95rem;
-        }
-
-        /* Styles pour la matrice qualité */
-        .quality-matrix {
-            margin-top: 25px;
-            padding: 20px;
-            background: linear-gradient(135deg, #e8f5e8, #f0f8f0);
-            border-radius: 12px;
-            border: 2px solid #28a745;
-        }
-
-        .quality-matrix h4 {
-            color: #155724;
-            margin-bottom: 20px;
-            font-size: 1.2rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .quality-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .quality-criterion {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #28a745;
-            box-shadow: 0 2px 4px rgba(40, 167, 69, 0.1);
-        }
-
-        .criterion-label {
-            display: block;
-            font-weight: 600;
-            color: #155724;
-            margin-bottom: 10px;
-            font-size: 0.9rem;
-        }
-
-        .checkbox-group {
-            display: flex;
-            gap: 15px;
-        }
-
-        .checkbox-group label {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            font-size: 0.85rem;
-            color: #495057;
-            cursor: pointer;
-            transition: color 0.3s ease;
-        }
-
-        .checkbox-group label:hover {
-            color: #28a745;
-        }
-
-        .checkbox-group input[type="radio"], .checkbox-group input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            margin: 0;
-            cursor: pointer;
-        }
-
-        /* Styles spécifiques pour les EAN */
-        .ean-section {
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 2px solid #28a745;
-        }
-
-        .ean-section h5 {
-            color: #155724;
-            margin-bottom: 15px;
-            font-size: 1.1rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .ean-quality-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-        }
-
-        .ean-criterion {
-            border: 1px solid #2196f3 !important;
-            box-shadow: 0 2px 4px rgba(33, 150, 243, 0.1) !important;
-        }
-
-        .ean-criterion .criterion-label {
-            color: #1565c0 !important;
-        }
-
-        .ean-code-display {
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            color: #424242;
-            background: #f5f5f5;
-            padding: 6px 10px;
-            border-radius: 4px;
-            border: 1px solid #e0e0e0;
-            letter-spacing: 1px;
-            font-weight: 600;
-            margin: 8px 0;
-        }
-
-        .ean-criterion.validated {
-            background: linear-gradient(135deg, #e8f5e8, #f0f8f0) !important;
-            border-color: #28a745 !important;
-        }
-
-        .ean-criterion.validated .criterion-label {
-            color: #155724 !important;
-        }
-
-        .quality-actions {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        .validate-btn, .reset-btn, .export-pdf-btn {
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-        }
-
-        .validate-btn {
-            background: linear-gradient(135deg, #28a745, #20c997);
-            color: white;
-        }
-
-        .validate-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
-        }
-
-        .reset-btn {
-            background: linear-gradient(135deg, #6c757d, #5a6268);
-            color: white;
-        }
-
-        .reset-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.3);
-        }
-
-        .export-pdf-btn {
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            color: white;
-        }
-
-        .export-pdf-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
-        }
-
-        .remarks-section {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #28a745;
-        }
-
-        .remarks-section label {
-            display: block;
-            font-weight: 600;
-            color: #155724;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-        }
-
-        .remarks-section textarea {
-            width: 100%;
-            min-height: 80px;
-            padding: 10px;
-            border: 2px solid #e9ecef;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            resize: vertical;
-            transition: border-color 0.3s ease;
-        }
-
-        .photo-section {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #28a745;
-            margin-top: 15px;
-        }
-
-        .photo-section label {
-            display: block;
-            font-weight: 600;
-            color: #155724;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-        }
-
-        .photo-upload {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .photo-upload input[type="file"] {
-            flex: 1;
-            padding: 8px;
-            border: 2px solid #e9ecef;
-            border-radius: 6px;
-            font-size: 0.85rem;
-        }
-
-        .photo-upload button {
-            padding: 8px 15px;
-            background: linear-gradient(135deg, #17a2b8, #138496);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-
-        .photo-upload button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 3px 8px rgba(23, 162, 184, 0.3);
-        }
-
-        .photo-gallery {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .photo-item {
-            position: relative;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            overflow: hidden;
-            background: #f8f9fa;
-            transition: all 0.3s ease;
-        }
-
-        .photo-item:hover {
-            border-color: #28a745;
-            transform: scale(1.02);
-        }
-
-        .photo-item img {
-            width: 100%;
-            height: 100px;
-            object-fit: cover;
-            display: block;
-        }
-
-        .photo-remove {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: rgba(220, 53, 69, 0.9);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            font-size: 12px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-        }
-
-        .photo-remove:hover {
-            background: #dc3545;
-            transform: scale(1.1);
-        }
-
-        .photo-info {
-            padding: 5px;
-            font-size: 0.7rem;
-            color: #6c757d;
-            text-align: center;
-            background: rgba(248, 249, 250, 0.9);
-        }
-
-        .quality-validated {
-            background: linear-gradient(135deg, #d4edda, #c3e6cb) !important;
-            border-color: #28a745 !important;
-        }
-
-        .quality-validated h4::after {
-            content: " ✅ VALIDÉ";
-            color: #155724;
-            font-size: 0.8rem;
-            background: #28a745;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            margin-left: 10px;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
-            font-size: 1.2rem;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #667eea;
-            font-size: 1.1rem;
-        }
-
-        @media (max-width: 768px) {
-            .search-container {
-                flex-direction: column;
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Scanner EAN - Contrôle Qualité</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module">
+    import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm';
+
+    let codeReader = null;
+    let isScanning = false;
+
+    // Scanner via flux vidéo en temps réel
+    window.startCamera = async function() {
+      const video = document.getElementById('video');
+      const scanButton = document.getElementById('scanButton');
+      const stopButton = document.getElementById('stopButton');
+      
+      try {
+        // Arrêter toute session précédente
+        if (codeReader) {
+          codeReader.reset();
+        }
+        
+        codeReader = new BrowserMultiFormatReader();
+        const constraints = {
+          video: {
+            facingMode: 'environment', // Caméra arrière
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        };
+        
+        await codeReader.decodeFromConstraints(constraints, video, (result, err) => {
+          if (result && isScanning) {
+            document.getElementById("barcodeInput").value = result.text;
+            stopCamera();
+            findProduct();
+            // Vibration si supportée
+            if (navigator.vibrate) {
+              navigator.vibrate(200);
             }
-            
-            .product-header {
-                flex-direction: column;
-                gap: 15px;
-            }
-            
-            .product-details {
-                grid-template-columns: 1fr;
-            }
+          }
+        });
+        
+        isScanning = true;
+        video.style.display = 'block';
+        scanButton.style.display = 'none';
+        stopButton.style.display = 'inline-block';
+        document.getElementById('scannerContainer').style.display = 'block';
+        
+      } catch (err) {
+        console.error('Erreur caméra:', err);
+        alert('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
+        resetCameraButtons();
+      }
+    };
+
+    window.stopCamera = function() {
+      isScanning = false;
+      
+      if (codeReader) {
+        try {
+          codeReader.reset();
+        } catch (e) {
+          console.log('Erreur lors de l\'arrêt de la caméra:', e);
         }
-    </style>
+        codeReader = null;
+      }
+      
+      resetCameraButtons();
+    };
+
+    function resetCameraButtons() {
+      document.getElementById('video').style.display = 'none';
+      document.getElementById('scanButton').style.display = 'inline-block';
+      document.getElementById('stopButton').style.display = 'none';
+      document.getElementById('scannerContainer').style.display = 'none';
+    }
+  </script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      margin: 0;
+      padding: 10px;
+      color: #2c3e50;
+      min-height: 100vh;
+    }
+    
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      max-width: 100%;
+      margin: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-size: 1.5em;
+    }
+    
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      background: #f8f9fa;
+    }
+    
+    .section h3 {
+      margin: 0 0 15px 0;
+      color: #495057;
+      font-size: 1.1em;
+    }
+    
+    .section.active {
+      border-color: #667eea;
+      background: #f0f3ff;
+    }
+    
+    .section.completed {
+      border-color: #28a745;
+      background: #f0fff4;
+    }
+    
+    input[type="file"], input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    
+    button {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border: none;
+      color: white;
+      padding: 12px 20px;
+      margin: 5px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+      min-height: 44px;
+    }
+    
+    button:active {
+      transform: scale(0.98);
+    }
+    
+    button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+    
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    
+    .button-row button {
+      flex: 1;
+      min-width: 120px;
+    }
+    
+    #scannerContainer {
+      display: none;
+      text-align: center;
+      margin: 15px 0;
+    }
+    
+    #video {
+      width: 100%;
+      max-width: 400px;
+      height: 300px;
+      border: 2px solid #667eea;
+      border-radius: 10px;
+      object-fit: cover;
+    }
+    
+    .scanner-overlay {
+      position: relative;
+      display: inline-block;
+    }
+    
+    .scanner-frame {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 250px;
+      height: 150px;
+      border: 2px solid #00ff00;
+      border-radius: 10px;
+      pointer-events: none;
+    }
+    
+    .scanner-corners {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #00ff00;
+    }
+    
+    .corner-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+    .corner-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+    .corner-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+    .corner-br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+    
+    #results, #productListContainer, #qualityControlSection {
+      margin-top: 15px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      background: #f8f9fa;
+    }
+    
+    .item {
+      padding: 12px;
+      border-bottom: 1px solid #ccc;
+      line-height: 1.4;
+    }
+    
+    .item:last-child {
+      border-bottom: none;
+    }
+    
+    .item strong {
+      color: #667eea;
+      font-size: 1.1em;
+    }
+    
+    #fileStatus {
+      color: #28a745;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    
+    .scan-instruction {
+      text-align: center;
+      color: #666;
+      font-size: 0.9em;
+      margin: 10px 0;
+    }
+    
+    /* Styles pour la liste de produits */
+    #searchInput {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+    
+    .product-item {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .product-item:hover {
+      background-color: #e9ecef;
+    }
+    
+    .product-item:last-child {
+      border-bottom: none;
+    }
+    
+    .product-ref {
+      font-weight: bold;
+      color: #667eea;
+      font-size: 1.1em;
+    }
+    
+    .product-details {
+      font-size: 0.9em;
+      color: #666;
+      margin-top: 5px;
+    }
+    
+    .no-results {
+      text-align: center;
+      padding: 20px;
+      color: #6c757d;
+      font-style: italic;
+    }
+    
+    /* Styles pour le contrôle qualité */
+    .quality-criterion {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 10px 0;
+    }
+    
+    .criterion-title {
+      font-weight: bold;
+      color: #495057;
+      margin-bottom: 10px;
+      font-size: 1.1em;
+    }
+    
+    .radio-group {
+      display: flex;
+      gap: 20px;
+      margin: 10px 0;
+      align-items: center;
+    }
+    
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    
+    .radio-option input[type="radio"] {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+    }
+    
+    .radio-option.ok {
+      color: #28a745;
+      font-weight: bold;
+    }
+    
+    .radio-option.not-ok {
+      color: #dc3545;
+      font-weight: bold;
+    }
+    
+    .radio-option.not-applicable {
+      color: #6c757d;
+      font-weight: bold;
+    }
+    
+    .comment-area {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 60px;
+      margin-top: 10px;
+    }
+    
+    .product-info {
+      background: #e8f4f8;
+      border: 1px solid #bee5eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .product-info h4 {
+      margin: 0 0 10px 0;
+      color: #0c5460;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    /* Styles pour le contrôle EAN */
+    .ean-progress {
+      background: #e8f4f8;
+      border: 1px solid #bee5eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    
+    .ean-progress h4 {
+      margin: 0 0 10px 0;
+      color: #0c5460;
+    }
+    
+    .progress-bar {
+      background: #e9ecef;
+      border-radius: 10px;
+      height: 20px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    
+    .progress-fill {
+      background: linear-gradient(90deg, #28a745, #20c997);
+      height: 100%;
+      width: 0%;
+      transition: width 0.3s ease;
+      border-radius: 10px;
+    }
+    
+    .progress-text {
+      font-weight: bold;
+      color: #495057;
+      margin-top: 5px;
+    }
+    
+    .ean-scanner-section, .ean-list-section {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    
+    .ean-scanner-section h4, .ean-list-section h4 {
+      margin: 0 0 15px 0;
+      color: #495057;
+    }
+    
+    .ean-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      margin: 8px 0;
+      transition: all 0.3s ease;
+    }
+    
+    .ean-item.checked {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+    
+    .ean-item.checked .ean-status {
+      color: #155724;
+    }
+    
+    .ean-details {
+      flex: 1;
+    }
+    
+    .ean-code {
+      font-family: monospace;
+      font-weight: bold;
+      color: #495057;
+      font-size: 1.1em;
+    }
+    
+    .ean-info {
+      font-size: 0.9em;
+      color: #6c757d;
+      margin-top: 3px;
+    }
+    
+    .ean-status {
+      font-weight: bold;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 0.9em;
+    }
+    
+    .ean-status.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+    
+    .ean-status.found {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .validation-summary {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    
+    .validation-summary.success {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+    
+    .validation-summary.warning {
+      background: #fff3cd;
+      border-color: #ffeaa7;
+    }
+    
+    .validation-summary h4 {
+      margin: 0 0 10px 0;
+    }
+    
+    /* Styles pour les photos */
+    .photo-section {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      border: 1px solid #e9ecef;
+    }
+    
+    .photo-button {
+      background: #17a2b8;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: 10px;
+    }
+    
+    .photo-button:hover {
+      background: #138496;
+    }
+    
+    .photo-preview {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .photo-item {
+      position: relative;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+      background: white;
+    }
+    
+    .photo-item img {
+      width: 100px;
+      height: 100px;
+      object-fit: cover;
+      display: block;
+    }
+    
+    .photo-item .photo-remove {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .photo-item .photo-timestamp {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      font-size: 10px;
+      padding: 2px 4px;
+      text-align: center;
+    }
+    
+    #photoModal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .photo-modal-content {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      max-width: 90%;
+      max-height: 90%;
+      text-align: center;
+    }
+    
+    #photoCanvas {
+      max-width: 100%;
+      max-height: 60vh;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    
+    #cameraVideo {
+      max-width: 100%;
+      max-height: 60vh;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        padding: 15px;
+        margin: 5px;
+      }
+      
+      h1 {
+        font-size: 1.3em;
+      }
+      
+      .section {
+        padding: 12px;
+      }
+      
+      button {
+        padding: 10px 15px;
+        font-size: 13px;
+      }
+      
+      #video {
+        height: 250px;
+      }
+      
+      .scanner-frame {
+        width: 200px;
+        height: 120px;
+      }
+      
+      .radio-group {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      
+      .quality-criterion {
+        padding: 12px;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🔍 Matrice Qualité</h1>
-        
-        <div class="search-section">
-            <div style="margin-bottom: 20px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
-                <label for="csvFile" style="display: block; margin-bottom: 10px; font-weight: 600;">
-                    📁 Charger le fichier BDD.csv depuis votre ordinateur :
-                </label>
-                <input type="file" id="csvFile" accept=".csv" style="margin-bottom: 10px;">
-                <button onclick="loadFromFile()" style="background: #28a745;">Charger le fichier</button>
-                <div id="fileStatus" style="margin-top: 10px; font-size: 0.9rem;"></div>
-            </div>
-            
-            <div class="search-container">
-                <div class="search-group">
-                    <label for="referenceSearch">Recherche par référence</label>
-                    <input type="text" id="referenceSearch" placeholder="Tapez une référence ou un mot-clé...">
-                </div>
-                <div class="search-group">
-                    <label for="referenceSelect">Ou sélectionnez une référence</label>
-                    <select id="referenceSelect">
-                        <option value="">-- Toutes les références --</option>
-                    </select>
-                </div>
-                <button onclick="searchProducts()">Rechercher</button>
-            </div>
-            
-            <div class="stats">
-                <span id="dbStats">Chargement de la base de données...</span>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <span id="searchStats"></span>
-                    <button onclick="exportValidations()" style="background: #17a2b8; padding: 8px 15px; font-size: 0.8rem;">
-                        📊 Exporter Validations
-                    </button>
-                </div>
-            </div>
-        </div>
+  <div class="container">
+    <h1>🔍 Scanner EAN - Contrôle Qualité</h1>
 
-        <div id="results" class="results-section" style="display: none;">
-            <div class="results-header">
-                <div class="results-title">Résultats de la recherche</div>
-                <div class="results-count" id="resultsCount">0 résultat</div>
-            </div>
-            <div id="resultsContainer"></div>
-        </div>
+    <div class="section completed" id="step1">
+      <h3>1️⃣ Charger la base de données</h3>
+      <div class="button-row">
+        <button onclick="loadOnlineCSV()">🌐 Charger BDD en ligne</button>
+        <button onclick="document.getElementById('csvFile').click()">📁 Charger fichier local</button>
+      </div>
+      <input type="file" id="csvFile" accept=".csv" style="display:none;" onchange="loadCSV()" />
+      <div id="fileStatus"></div>
     </div>
 
-    <script>
-        let database = [];
-        let allReferences = [];
+    <div class="section" id="step2">
+      <h3>2️⃣ Scanner un code-barres</h3>
+      
+      <div class="button-row">
+        <button id="scanButton" onclick="startCamera()">📷 Scanner en direct</button>
+        <button id="stopButton" onclick="stopCamera()" style="display:none;">⏹️ Arrêter</button>
+        <button onclick="showProductList()">📋 Choisir dans la liste</button>
+      </div>
+      
+      <div id="scannerContainer">
+        <div class="scanner-overlay">
+          <video id="video" playsinline></video>
+          <div class="scanner-frame">
+            <div class="scanner-corners corner-tl"></div>
+            <div class="scanner-corners corner-tr"></div>
+            <div class="scanner-corners corner-bl"></div>
+            <div class="scanner-corners corner-br"></div>
+          </div>
+        </div>
+        <div class="scan-instruction">Placez le code-barres dans le cadre</div>
+      </div>
+      
+      <div id="productListContainer" style="display:none;">
+        <h4>🔍 Rechercher une référence</h4>
+        <input type="text" id="searchInput" placeholder="Rechercher par référence, code, marque..." onkeyup="filterProducts()" />
+        <div id="productList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0;"></div>
+        <button onclick="hideProductList()" style="background: #6c757d;">❌ Fermer la liste</button>
+      </div>
+      
+      <label>⌨️ Ou saisir manuellement :</label>
+      <input type="text" id="barcodeInput" placeholder="Entrer un code EAN..." />
+      <button onclick="findProduct()">🔍 Rechercher</button>
+    </div>
 
-        async function loadFromFile() {
-            const fileInput = document.getElementById('csvFile');
-            const fileStatus = document.getElementById('fileStatus');
-            
-            if (!fileInput.files[0]) {
-                fileStatus.innerHTML = '<span style="color: #dc3545;">❌ Veuillez sélectionner un fichier</span>';
-                return;
-            }
-            
-            fileStatus.innerHTML = '<span style="color: #007bff;">⏳ Chargement en cours...</span>';
-            
-            try {
-                const file = fileInput.files[0];
-                const csvText = await file.text();
-                
-                const parsed = Papa.parse(csvText, {
-                    header: true,
-                    delimiter: ';',
-                    skipEmptyLines: true,
-                    encoding: 'UTF-8'
-                });
-                
-                database = parsed.data.map(row => ({
-                    reference: row['Référence'] || row['R�f�rence'],
-                    codeArticle: row['Code article'],
-                    couleurFR: row['Couleur (FR)'],
-                    couleurUS: row['Couleur (US)'],
-                    taille: row['Taille'],
-                    famille: row['Famille (FR)'],
-                    marque: row['Marque'],
-                    genre: row['Genre (FR)'],
-                    ean: row['EAN'],
-                    quantite: row['QTÉ'] || row['QT�'],
-                    descriptifFR: row['Descriptif (FR)'],
-                    composition: row['Composition (FR)'],
-                    pays: row['Pays']
-                })).filter(item => item.reference);
-                
-                allReferences = [...new Set(database.map(item => item.reference))];
-                
-                const select = document.getElementById('referenceSelect');
-                select.innerHTML = '<option value="">-- Toutes les références --</option>';
-                allReferences.sort().forEach(ref => {
-                    const option = document.createElement('option');
-                    option.value = ref;
-                    option.textContent = ref;
-                    select.appendChild(option);
-                });
-                
-                document.getElementById('dbStats').textContent = 
-                    `Base de données: ${database.length} articles, ${allReferences.length} références uniques`;
-                
-                fileStatus.innerHTML = '<span style="color: #28a745;">✅ Fichier chargé avec succès!</span>';
-                
-                searchProducts();
-                
-            } catch (error) {
-                console.error('Erreur:', error);
-                fileStatus.innerHTML = '<span style="color: #dc3545;">❌ Erreur lors du chargement du fichier</span>';
-            }
+    <div id="results" style="display:none;"></div>
+
+    <div class="section hidden" id="step3">
+      <h3>3️⃣ Contrôle Qualité - Carton</h3>
+      
+      <div class="product-info" id="selectedProductInfo">
+        <!-- Informations du produit sélectionné -->
+      </div>
+
+      <div id="qualityControlSection">
+        
+        <!-- Shipping Mark -->
+        <div class="quality-criterion">
+          <div class="criterion-title">📦 Shipping Mark</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="shipping_mark" value="ok" onchange="updatePackageQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="shipping_mark" value="not_ok" onchange="updatePackageQualityStatus()">
+              ❌ PAS OK
+            </label>
+            <button class="photo-button" onclick="takePhoto('shipping_mark')">📷 Photo</button>
+          </div>
+          <textarea class="comment-area" id="comment_shipping_mark" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-preview" id="photos_shipping_mark"></div>
+        </div>
+
+        <!-- Etat du colis -->
+        <div class="quality-criterion">
+          <div class="criterion-title">📋 Etat du colis</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="package_condition" value="ok" onchange="updatePackageQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="package_condition" value="not_ok" onchange="updatePackageQualityStatus()">
+              ❌ PAS OK
+            </label>
+            <button class="photo-button" onclick="takePhoto('package_condition')">📷 Photo</button>
+          </div>
+          <textarea class="comment-area" id="comment_package_condition" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-preview" id="photos_package_condition"></div>
+        </div>
+
+        <!-- Bande de garantie -->
+        <div class="quality-criterion">
+          <div class="criterion-title">🔒 Bande de garantie</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="warranty_seal" value="ok" onchange="updatePackageQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="warranty_seal" value="not_ok" onchange="updatePackageQualityStatus()">
+              ❌ PAS OK
+            </label>
+            <button class="photo-button" onclick="takePhoto('warranty_seal')">📷 Photo</button>
+          </div>
+          <textarea class="comment-area" id="comment_warranty_seal" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-preview" id="photos_warranty_seal"></div>
+        </div>
+
+      </div>
+
+      <div class="button-row">
+        <button onclick="proceedToProductControl()" id="packageValidateButton" disabled>➡️ Contrôler le produit</button>
+        <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
+      </div>
+    </div>
+
+    <div class="section hidden" id="step4">
+      <h3>4️⃣ Contrôle Qualité - Produit</h3>
+      
+      <div class="product-info" id="productControlInfo">
+        <!-- Informations du produit sélectionné -->
+      </div>
+
+      <div id="productQualityControlSection">
+        
+        <!-- Test du zip -->
+        <div class="quality-criterion">
+          <div class="criterion-title">🤐 Test du zip (si existant)</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="zip_test" value="ok" onchange="updateProductQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="zip_test" value="not_ok" onchange="updateProductQualityStatus()">
+              ❌ PAS OK
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="zip_test" value="not_applicable" onchange="updateProductQualityStatus()">
+              ➖ Non applicable
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_zip_test" placeholder="Commentaire (optionnel)..."></textarea>
+        </div>
+
+        <!-- Vérification boutonnage -->
+        <div class="quality-criterion">
+          <div class="criterion-title">🔘 Vérification boutonnage</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="button_check" value="ok" onchange="updateProductQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="button_check" value="not_ok" onchange="updateProductQualityStatus()">
+              ❌ PAS OK
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="button_check" value="not_applicable" onchange="updateProductQualityStatus()">
+              ➖ Non applicable
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_button_check" placeholder="Commentaire (optionnel)..."></textarea>
+        </div>
+
+        <!-- Contrôle Coloris -->
+        <div class="quality-criterion">
+          <div class="criterion-title">🎨 Contrôle Coloris</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="color_check" value="ok" onchange="updateProductQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="color_check" value="not_ok" onchange="updateProductQualityStatus()">
+              ❌ PAS OK
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_color_check" placeholder="Commentaire (optionnel)..."></textarea>
+        </div>
+
+        <!-- Vérification finition/coutures -->
+        <div class="quality-criterion">
+          <div class="criterion-title">✂️ Vérification finition/coutures</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="finishing_check" value="ok" onchange="updateProductQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="finishing_check" value="not_ok" onchange="updateProductQualityStatus()">
+              ❌ PAS OK
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_finishing_check" placeholder="Commentaire (optionnel)..."></textarea>
+        </div>
+
+      </div>
+
+      <div class="button-row">
+        <button onclick="proceedToEanControl()" id="productValidateButton" disabled>➡️ Contrôler les EAN de la référence</button>
+        <button onclick="goBackToPackageControl()" style="background: #ffc107; color: #000;">⬅️ Retour carton</button>
+        <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
+      </div>
+    </div>
+
+    <div class="section hidden" id="step5">
+      <h3>5️⃣ Contrôle EAN - Référence</h3>
+      
+      <div class="product-info" id="eanControlInfo">
+        <!-- Informations de la référence à contrôler -->
+      </div>
+
+      <div id="eanControlSection">
+        <div class="ean-progress">
+          <h4>📊 Progression du contrôle</h4>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="progress-text" id="progressText">0 / 0 EAN contrôlés</div>
+        </div>
+
+        <div class="ean-scanner-section">
+          <h4>🔍 Scanner les EAN de la référence</h4>
+          <div class="button-row">
+            <button id="eanScanButton" onclick="startEanScanner()">📷 Scanner EAN</button>
+            <button id="eanStopButton" onclick="stopEanScanner()" style="display:none;">⏹️ Arrêter</button>
+          </div>
+          
+          <div id="eanScannerContainer" style="display:none;">
+            <div class="scanner-overlay">
+              <video id="eanVideo" playsinline></video>
+              <div class="scanner-frame">
+                <div class="scanner-corners corner-tl"></div>
+                <div class="scanner-corners corner-tr"></div>
+                <div class="scanner-corners corner-bl"></div>
+                <div class="scanner-corners corner-br"></div>
+              </div>
+            </div>
+            <div class="scan-instruction">Scanner les codes-barres de la référence</div>
+          </div>
+          
+          <label>⌨️ Ou saisir manuellement :</label>
+          <input type="text" id="eanInput" placeholder="Scanner ou saisir un EAN de la référence..." />
+          <button onclick="checkEanForReference()">🔍 Vérifier EAN</button>
+        </div>
+
+        <div class="ean-list-section">
+          <h4>📋 Liste des EAN à contrôler</h4>
+          <div id="eanList"></div>
+        </div>
+
+        <div id="eanValidationResult" style="display:none;"></div>
+      </div>
+
+      <div class="button-row">
+        <button onclick="validateCompleteControl()" id="completeValidateButton" disabled>✅ Finaliser le contrôle complet</button>
+        <button onclick="goBackToProductControl()" style="background: #ffc107; color: #000;">⬅️ Retour produit</button>
+        <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let database = [];
+    let currentProduct = null;
+    let packageQualityResults = {};
+    let productQualityResults = {};
+    let currentReference = null;
+    let referenceEanList = [];
+    let checkedEans = new Set();
+    let eanCodeReader = null;
+    let isEanScanning = false;
+
+    const COL_REF = 0;
+    const COL_CODE = 1;
+    const COL_COULEUR = 2;
+    const COL_TAILLE = 4;
+    const COL_MARQUE = 7;
+    const COL_EAN = 10;
+
+    function loadCSV() {
+      const file = document.getElementById('csvFile').files[0];
+      if (!file) return alert("⚠️ Sélectionnez un fichier CSV.");
+      
+      Papa.parse(file, {
+        header: false,
+        delimiter: ";",
+        skipEmptyLines: true,
+        complete: results => {
+          database = results.data.slice(1);
+          document.getElementById("fileStatus").innerHTML = 
+            `✅ ${database.length} articles chargés avec succès`;
+          document.getElementById('step1').classList.add('completed');
+          document.getElementById('step2').classList.add('active');
+        },
+        error: (error) => {
+          alert("❌ Erreur lors du chargement du fichier CSV");
+          console.error(error);
         }
+      });
+    }
 
-        // Chargement initial avec données d'exemple
-        async function loadDatabase() {
-            try {
-                database = [
-                    {
-                        reference: "ROYAUTE DB BLACK-BLACK MEN 068",
-                        codeArticle: "WY1993H/GN",
-                        couleurFR: "Noir / Noir",
-                        couleurUS: "Black / Black",
-                        taille: "S",
-                        famille: "Softshell",
-                        marque: "Geographical Norway",
-                        genre: "Homme",
-                        ean: "3543115515108",
-                        quantite: 1,
-                        descriptifFR: "SOFTSHELL HOMME AVEC CAPUCHE DETACHABLE ET AJUSTABLE, 2 POCHES ZIPPEE DEVANT ET 1 POCHE POITRINE DIAGONALE, MULTI BADGE EN PVC ET IMPRESSIONS. 2 BANDES IMPRIME A HAUTE DENSITE SUR DOS.",
-                        composition: "4% Elasthanne, 96% Polyester",
-                        pays: "CHINE"
-                    },
-                    {
-                        reference: "ROYAUTE DB BLACK-BLACK MEN 068",
-                        codeArticle: "WY1993H/GN",
-                        couleurFR: "Noir / Noir",
-                        couleurUS: "Black / Black",
-                        taille: "M",
-                        famille: "Softshell",
-                        marque: "Geographical Norway",
-                        genre: "Homme",
-                        ean: "3543115515115",
-                        quantite: 2,
-                        descriptifFR: "SOFTSHELL HOMME AVEC CAPUCHE DETACHABLE ET AJUSTABLE, 2 POCHES ZIPPEE DEVANT ET 1 POCHE POITRINE DIAGONALE, MULTI BADGE EN PVC ET IMPRESSIONS. 2 BANDES IMPRIME A HAUTE DENSITE SUR DOS.",
-                        composition: "4% Elasthanne, 96% Polyester",
-                        pays: "CHINE"
-                    },
-                    {
-                        reference: "ROYAUTE DB DGREY-BLACK MEN 068",
-                        codeArticle: "WY1993H/GN",
-                        couleurFR: "Gris Foncé / Noir",
-                        couleurUS: "Dark Grey / Black",
-                        taille: "L",
-                        famille: "Softshell",
-                        marque: "Geographical Norway",
-                        genre: "Homme",
-                        ean: "3543115515122",
-                        quantite: 3,
-                        descriptifFR: "SOFTSHELL HOMME AVEC CAPUCHE DETACHABLE ET AJUSTABLE, 2 POCHES ZIPPEE DEVANT ET 1 POCHE POITRINE DIAGONALE, MULTI BADGE EN PVC ET IMPRESSIONS. 2 BANDES IMPRIME A HAUTE DENSITE SUR DOS.",
-                        composition: "4% Elasthanne, 96% Polyester",
-                        pays: "CHINE"
-                    }
-                ];
-                
-                allReferences = [...new Set(database.map(item => item.reference))];
-                
-                const select = document.getElementById('referenceSelect');
-                allReferences.sort().forEach(ref => {
-                    const option = document.createElement('option');
-                    option.value = ref;
-                    option.textContent = ref;
-                    select.appendChild(option);
-                });
-                
-                document.getElementById('dbStats').textContent = 
-                    `Base de données: ${database.length} articles, ${allReferences.length} références uniques`;
-                
-            } catch (error) {
-                console.error('Erreur lors du chargement:', error);
-                document.getElementById('dbStats').textContent = 'Erreur de chargement';
-            }
+    function loadOnlineCSV() {
+      document.getElementById("fileStatus").innerHTML = "⏳ Chargement de la base de données en ligne...";
+      
+      const alternativeUrls = [
+        'https://cdn.jsdelivr.net/gh/rbmfinance1/26002@gh-pages/bdd.csv',
+        'https://raw.githubusercontent.com/rbmfinance1/26002/gh-pages/bdd.csv',
+        'https://rbmfinance1.github.io/26002/bdd.csv'
+      ];
+      
+      async function tryUrls(urlIndex = 0) {
+        if (urlIndex >= alternativeUrls.length) {
+          console.log('Toutes les sources ont échoué');
+          showManualDownloadOption();
+          return;
         }
+        
+        const currentUrl = alternativeUrls[urlIndex];
+        console.log(`Tentative ${urlIndex + 1}:`, currentUrl);
+        
+        try {
+          const response = await fetch(currentUrl, {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: {
+              'Accept': 'text/csv,text/plain,*/*'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          const csvData = await response.text();
+          
+          if (csvData.includes('<!DOCTYPE') || csvData.includes('<html>')) {
+            throw new Error('Contenu HTML reçu au lieu de CSV');
+          }
+          
+          if (csvData.trim().length < 10) {
+            throw new Error('Fichier CSV vide ou trop court');
+          }
+          
+          console.log('✅ Chargement réussi avec:', currentUrl);
+          processCsvData(csvData);
+          
+        } catch (error) {
+          console.log(`Source ${urlIndex + 1} échouée:`, error.message);
+          tryUrls(urlIndex + 1);
+        }
+      }
+      
+      tryUrls(0);
+    }
 
-        function searchProducts() {
-            const searchText = document.getElementById('referenceSearch').value.toLowerCase().trim();
-            const selectedRef = document.getElementById('referenceSelect').value;
-            
-            let filteredResults = [];
-            
-            if (selectedRef) {
-                filteredResults = database.filter(item => item.reference === selectedRef);
-            } else if (searchText) {
-                filteredResults = database.filter(item => 
-                    item.reference.toLowerCase().includes(searchText) ||
-                    item.marque.toLowerCase().includes(searchText) ||
-                    item.couleurFR.toLowerCase().includes(searchText) ||
-                    item.famille.toLowerCase().includes(searchText)
-                );
+    function showManualDownloadOption() {
+      document.getElementById("fileStatus").innerHTML = 
+        `<div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 10px 0;">
+          <strong>📥 Téléchargement manuel requis</strong><br/><br/>
+          <div style="margin: 10px 0;">
+            <a href="https://rbmfinance1.github.io/26002/bdd.csv" 
+               download="bdd.csv" 
+               style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px 0;">
+              📥 Télécharger bdd.csv
+            </a>
+          </div>
+          <small style="color: #856404;">
+            1. Cliquez sur le lien ci-dessus pour télécharger<br/>
+            2. Une fois téléchargé, utilisez "📁 Charger fichier local"<br/>
+            3. Sélectionnez le fichier bdd.csv téléchargé
+          </small>
+        </div>`;
+    }
+
+    function processCsvData(csvData) {
+      try {
+        Papa.parse(csvData, {
+          header: false,
+          delimiter: ";",
+          skipEmptyLines: true,
+          complete: results => {
+            if (results.data && results.data.length > 1) {
+              database = results.data.slice(1);
+              document.getElementById("fileStatus").innerHTML = 
+                `✅ ${database.length} articles chargés depuis la base en ligne`;
+              document.getElementById('step1').classList.add('completed');
+              document.getElementById('step2').classList.add('active');
             } else {
-                filteredResults = database;
+              throw new Error('Fichier CSV vide ou invalide');
             }
-            
-            displayResults(filteredResults);
-            updateSearchStats(filteredResults.length, searchText || selectedRef);
+          },
+          error: (error) => {
+            console.error('Erreur Papa Parse:', error);
+            document.getElementById("fileStatus").innerHTML = 
+              "❌ Erreur lors du traitement du fichier CSV";
+          }
+        });
+      } catch (error) {
+        console.error('Erreur de traitement CSV:', error);
+        document.getElementById("fileStatus").innerHTML = 
+          "❌ Erreur lors du traitement des données";
+      }
+    }
+
+    function findProduct() {
+      const code = document.getElementById("barcodeInput").value.trim();
+      if (!code) {
+        alert("⚠️ Veuillez entrer un code EAN");
+        return;
+      }
+      
+      if (database.length === 0) {
+        alert("⚠️ Veuillez d'abord charger un fichier CSV");
+        return;
+      }
+      
+      const result = database.find(row => row[COL_EAN] === code);
+      const rd = document.getElementById("results");
+
+      if (result) {
+        currentProduct = result;
+        rd.style.display = "block";
+        rd.innerHTML = `
+          <div class="item">
+            <strong>✅ Article trouvé !</strong><br/><br/>
+            <strong>Réf :</strong> ${result[COL_REF] || 'N/A'}<br/>
+            <strong>Code Article :</strong> ${result[COL_CODE] || 'N/A'}<br/>
+            <strong>Marque :</strong> ${result[COL_MARQUE] || 'N/A'}<br/>
+            <strong>Couleur :</strong> ${result[COL_COULEUR] || 'N/A'}<br/>
+            <strong>Taille :</strong> ${result[COL_TAILLE] || 'N/A'}<br/>
+            <strong>EAN :</strong> ${result[COL_EAN] || 'N/A'}<br/><br/>
+            <button onclick='startQualityControl()'>🔍 Commencer le contrôle qualité</button>
+          </div>`;
+      } else {
+        rd.style.display = "block";
+        rd.innerHTML = `
+          <div class="item">
+            <strong>❌ Aucun article trouvé</strong><br/>
+            Code EAN recherché : <strong>${code}</strong><br/>
+            Vérifiez le code ou la base de données.<br/><br/>
+            <button onclick="startCamera()">📷 Essayer avec la caméra</button>
+          </div>`;
+      }
+      
+      rd.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function showProductList() {
+      if (database.length === 0) {
+        alert("⚠️ Veuillez d'abord charger un fichier CSV");
+        return;
+      }
+      
+      document.getElementById('productListContainer').style.display = 'block';
+      document.getElementById('searchInput').value = '';
+      displayProducts(database);
+      
+      document.getElementById('productListContainer').scrollIntoView({ behavior: 'smooth' });
+      
+      setTimeout(() => {
+        document.getElementById('searchInput').focus();
+      }, 300);
+    }
+
+    function hideProductList() {
+      document.getElementById('productListContainer').style.display = 'none';
+    }
+
+    function displayProducts(products) {
+      const productList = document.getElementById('productList');
+      
+      if (products.length === 0) {
+        productList.innerHTML = '<div class="no-results">Aucun produit trouvé</div>';
+        return;
+      }
+      
+      productList.innerHTML = products.slice(0, 100).map((item, index) => 
+        `<div class="product-item" onclick="selectProduct(${database.indexOf(item)})">
+          <div class="product-ref">${item[COL_REF] || 'N/A'}</div>
+          <div class="product-details">
+            ${item[COL_CODE] || 'N/A'} | ${item[COL_MARQUE] || 'N/A'} | 
+            Taille: ${item[COL_TAILLE] || 'N/A'} | Couleur: ${item[COL_COULEUR] || 'N/A'}
+          </div>
+        </div>`
+      ).join('');
+      
+      if (products.length > 100) {
+        productList.innerHTML += '<div class="no-results">... et ' + (products.length - 100) + ' autres résultats. Affinez votre recherche.</div>';
+      }
+    }
+
+    function filterProducts() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      
+      if (searchTerm === '') {
+        displayProducts(database);
+        return;
+      }
+      
+      const filteredProducts = database.filter(item => {
+        const ref = (item[COL_REF] || '').toLowerCase();
+        const code = (item[COL_CODE] || '').toLowerCase();
+        const marque = (item[COL_MARQUE] || '').toLowerCase();
+        const couleur = (item[COL_COULEUR] || '').toLowerCase();
+        const taille = (item[COL_TAILLE] || '').toLowerCase();
+        const ean = (item[COL_EAN] || '').toLowerCase();
+        
+        return ref.includes(searchTerm) || 
+               code.includes(searchTerm) || 
+               marque.includes(searchTerm) || 
+               couleur.includes(searchTerm) || 
+               taille.includes(searchTerm) ||
+               ean.includes(searchTerm);
+      });
+      
+      displayProducts(filteredProducts);
+    }
+
+    function selectProduct(index) {
+      const selectedItem = database[index];
+      currentProduct = selectedItem;
+      hideProductList();
+      
+      const rd = document.getElementById("results");
+      rd.style.display = "block";
+      rd.innerHTML = `
+        <div class="item">
+          <strong>✅ Article sélectionné !</strong><br/><br/>
+          <strong>Réf :</strong> ${selectedItem[COL_REF] || 'N/A'}<br/>
+          <strong>Code Article :</strong> ${selectedItem[COL_CODE] || 'N/A'}<br/>
+          <strong>Marque :</strong> ${selectedItem[COL_MARQUE] || 'N/A'}<br/>
+          <strong>Couleur :</strong> ${selectedItem[COL_COULEUR] || 'N/A'}<br/>
+          <strong>Taille :</strong> ${selectedItem[COL_TAILLE] || 'N/A'}<br/>
+          <strong>EAN :</strong> ${selectedItem[COL_EAN] || 'N/A'}<br/><br/>
+          <button onclick='startQualityControl()'>🔍 Commencer le contrôle qualité</button>
+        </div>`;
+      
+      document.getElementById("barcodeInput").value = selectedItem[COL_EAN] || '';
+      rd.scrollIntoView({ behavior: 'smooth' });
+      
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+    }
+
+    function startQualityControl() {
+      if (!currentProduct) return;
+
+      // Masquer la section de résultats
+      document.getElementById("results").style.display = "none";
+
+      // Afficher les informations du produit
+      const productInfoHtml = `
+        <h4>📦 Produit à contrôler</h4>
+        <strong>Réf :</strong> ${currentProduct[COL_REF] || 'N/A'} | 
+        <strong>Code :</strong> ${currentProduct[COL_CODE] || 'N/A'} | 
+        <strong>Marque :</strong> ${currentProduct[COL_MARQUE] || 'N/A'}<br/>
+        <strong>Couleur :</strong> ${currentProduct[COL_COULEUR] || 'N/A'} | 
+        <strong>Taille :</strong> ${currentProduct[COL_TAILLE] || 'N/A'} | 
+        <strong>EAN :</strong> ${currentProduct[COL_EAN] || 'N/A'}
+      `;
+      
+      document.getElementById("selectedProductInfo").innerHTML = productInfoHtml;
+
+      // Afficher la section de contrôle qualité carton
+      document.getElementById("step3").classList.remove("hidden");
+      document.getElementById("step3").classList.add("active");
+      document.getElementById("step2").classList.remove("active");
+      document.getElementById("step2").classList.add("completed");
+
+      // Réinitialiser les contrôles
+      resetQualityControls();
+
+      // Scroll vers la section de contrôle
+      document.getElementById("step3").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function resetQualityControls() {
+      // Réinitialiser tous les boutons radio
+      document.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.checked = false;
+      });
+
+      // Vider tous les commentaires
+      document.querySelectorAll('.comment-area').forEach(textarea => {
+        textarea.value = '';
+      });
+
+      // Réinitialiser les objets des résultats
+      packageQualityResults = {};
+      productQualityResults = {};
+
+      // Désactiver les boutons de validation
+      document.getElementById('packageValidateButton').disabled = true;
+      if (document.getElementById('productValidateButton')) {
+        document.getElementById('productValidateButton').disabled = true;
+      }
+    }
+
+    function updatePackageQualityStatus() {
+      // Vérifier si tous les critères du carton sont remplis
+      const shippingMark = document.querySelector('input[name="shipping_mark"]:checked');
+      const packageCondition = document.querySelector('input[name="package_condition"]:checked');
+      const warrantySeal = document.querySelector('input[name="warranty_seal"]:checked');
+
+      // Activer le bouton si tous les critères sont évalués
+      const allChecked = shippingMark && packageCondition && warrantySeal;
+      document.getElementById('packageValidateButton').disabled = !allChecked;
+
+      // Mettre à jour l'objet des résultats du carton
+      if (allChecked) {
+        packageQualityResults = {
+          shipping_mark: {
+            status: shippingMark.value,
+            comment: document.getElementById('comment_shipping_mark').value
+          },
+          package_condition: {
+            status: packageCondition.value,
+            comment: document.getElementById('comment_package_condition').value
+          },
+          warranty_seal: {
+            status: warrantySeal.value,
+            comment: document.getElementById('comment_warranty_seal').value
+          }
+        };
+      }
+    }
+
+    function updateProductQualityStatus() {
+      // Vérifier si tous les critères du produit sont remplis
+      const zipTest = document.querySelector('input[name="zip_test"]:checked');
+      const buttonCheck = document.querySelector('input[name="button_check"]:checked');
+      const colorCheck = document.querySelector('input[name="color_check"]:checked');
+      const finishingCheck = document.querySelector('input[name="finishing_check"]:checked');
+
+      // Activer le bouton si tous les critères sont évalués
+      const allChecked = zipTest && buttonCheck && colorCheck && finishingCheck;
+      document.getElementById('productValidateButton').disabled = !allChecked;
+
+      // Mettre à jour l'objet des résultats du produit
+      if (allChecked) {
+        productQualityResults = {
+          zip_test: {
+            status: zipTest.value,
+            comment: document.getElementById('comment_zip_test').value
+          },
+          button_check: {
+            status: buttonCheck.value,
+            comment: document.getElementById('comment_button_check').value
+          },
+          color_check: {
+            status: colorCheck.value,
+            comment: document.getElementById('comment_color_check').value
+          },
+          finishing_check: {
+            status: finishingCheck.value,
+            comment: document.getElementById('comment_finishing_check').value
+          }
+        };
+      }
+    }
+
+    function proceedToProductControl() {
+      updatePackageQualityStatus();
+      
+      // Passer à l'étape 4 (contrôle produit)
+      document.getElementById("step3").classList.remove("active");
+      document.getElementById("step3").classList.add("completed");
+      
+      // Copier les informations du produit dans la section produit
+      const productInfoHtml = `
+        <h4>👕 Contrôle du produit</h4>
+        <strong>Réf :</strong> ${currentProduct[COL_REF] || 'N/A'} | 
+        <strong>Code :</strong> ${currentProduct[COL_CODE] || 'N/A'} | 
+        <strong>Marque :</strong> ${currentProduct[COL_MARQUE] || 'N/A'}<br/>
+        <strong>Couleur :</strong> ${currentProduct[COL_COULEUR] || 'N/A'} | 
+        <strong>Taille :</strong> ${currentProduct[COL_TAILLE] || 'N/A'} | 
+        <strong>EAN :</strong> ${currentProduct[COL_EAN] || 'N/A'}
+      `;
+      
+      document.getElementById("productControlInfo").innerHTML = productInfoHtml;
+      
+      document.getElementById("step4").classList.remove("hidden");
+      document.getElementById("step4").classList.add("active");
+
+      // Scroll vers la section de contrôle produit
+      document.getElementById("step4").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function goBackToPackageControl() {
+      // Retourner à l'étape 3 (contrôle carton)
+      document.getElementById("step4").classList.remove("active");
+      document.getElementById("step4").classList.add("hidden");
+      
+      document.getElementById("step3").classList.add("active");
+      document.getElementById("step3").classList.remove("completed");
+
+      // Scroll vers la section de contrôle carton
+      document.getElementById("step3").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function proceedToEanControl() {
+      updateProductQualityStatus();
+      
+      if (!currentProduct || !currentProduct[COL_REF]) {
+        alert("⚠️ Impossible de récupérer la référence du produit");
+        return;
+      }
+
+      currentReference = currentProduct[COL_REF];
+      
+      // Trouver tous les EAN de cette référence
+      referenceEanList = database.filter(item => item[COL_REF] === currentReference);
+      checkedEans.clear();
+
+      if (referenceEanList.length === 0) {
+        alert("⚠️ Aucun EAN trouvé pour cette référence");
+        return;
+      }
+
+      // Passer à l'étape 5 (contrôle EAN)
+      document.getElementById("step4").classList.remove("active");
+      document.getElementById("step4").classList.add("completed");
+      
+      // Afficher les informations de la référence
+      const eanInfoHtml = `
+        <h4>📋 Contrôle des EAN</h4>
+        <strong>Référence :</strong> ${currentReference}<br/>
+        <strong>Nombre d'EAN à contrôler :</strong> ${referenceEanList.length}<br/>
+        <small>Vérifiez que tous les codes EAN de cette référence sont présents physiquement</small>
+      `;
+      
+      document.getElementById("eanControlInfo").innerHTML = eanInfoHtml;
+      
+      document.getElementById("step5").classList.remove("hidden");
+      document.getElementById("step5").classList.add("active");
+
+      // Initialiser la liste des EAN
+      displayEanList();
+      updateEanProgress();
+
+      // Scroll vers la section de contrôle EAN
+      document.getElementById("step5").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function displayEanList() {
+      const eanList = document.getElementById('eanList');
+      
+      eanList.innerHTML = referenceEanList.map((item, index) => {
+        const isChecked = checkedEans.has(item[COL_EAN]);
+        const statusClass = isChecked ? 'checked' : '';
+        const statusText = isChecked ? 'Trouvé ✅' : 'En attente ⏳';
+        const statusBadgeClass = isChecked ? 'found' : 'pending';
+        
+        return `
+          <div class="ean-item ${statusClass}" id="ean-item-${index}">
+            <div class="ean-details">
+              <div class="ean-code">${item[COL_EAN] || 'N/A'}</div>
+              <div class="ean-info">
+                ${item[COL_CODE] || 'N/A'} | 
+                Taille: ${item[COL_TAILLE] || 'N/A'} | 
+                Couleur: ${item[COL_COULEUR] || 'N/A'}
+              </div>
+            </div>
+            <div class="ean-status ${statusBadgeClass}">${statusText}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateEanProgress() {
+      const total = referenceEanList.length;
+      const checked = checkedEans.size;
+      const percentage = total > 0 ? (checked / total) * 100 : 0;
+
+      document.getElementById('progressFill').style.width = percentage + '%';
+      document.getElementById('progressText').textContent = `${checked} / ${total} EAN contrôlés`;
+
+      // Activer le bouton de finalisation si tous les EAN sont contrôlés
+      document.getElementById('completeValidateButton').disabled = checked < total;
+
+      // Afficher un résumé si tous les EAN sont contrôlés
+      if (checked === total && total > 0) {
+        showEanValidationResult();
+      }
+    }
+
+    function showEanValidationResult() {
+      const resultDiv = document.getElementById('eanValidationResult');
+      const total = referenceEanList.length;
+      
+      resultDiv.innerHTML = `
+        <div class="validation-summary success">
+          <h4>✅ Contrôle EAN terminé</h4>
+          <p>Tous les ${total} codes EAN de la référence <strong>${currentReference}</strong> ont été vérifiés.</p>
+          <p>Vous pouvez maintenant finaliser le contrôle complet.</p>
+        </div>
+      `;
+      resultDiv.style.display = 'block';
+    }
+
+    function startEanScanner() {
+      const video = document.getElementById('eanVideo');
+      const scanButton = document.getElementById('eanScanButton');
+      const stopButton = document.getElementById('eanStopButton');
+      
+      if (eanCodeReader) {
+        eanCodeReader.reset();
+      }
+      
+      eanCodeReader = new BrowserMultiFormatReader();
+      
+      eanCodeReader.decodeFromConstraints({
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         }
+      }, video, (result, err) => {
+        if (result && isEanScanning) {
+          document.getElementById("eanInput").value = result.text;
+          checkEanForReference();
+          if (navigator.vibrate) {
+            navigator.vibrate(200);
+          }
+        }
+      }).then(() => {
+        isEanScanning = true;
+        video.style.display = 'block';
+        scanButton.style.display = 'none';
+        stopButton.style.display = 'inline-block';
+        document.getElementById('eanScannerContainer').style.display = 'block';
+      }).catch(err => {
+        console.error('Erreur caméra EAN:', err);
+        alert('Impossible d\'accéder à la caméra pour le scan EAN.');
+      });
+    }
 
-        function displayResults(results) {
-            const resultsSection = document.getElementById('results');
-            const resultsContainer = document.getElementById('resultsContainer');
-            const resultsCount = document.getElementById('resultsCount');
-            
-            if (results.length === 0) {
-                resultsSection.style.display = 'block';
-                resultsCount.textContent = '0 résultat';
-                resultsContainer.innerHTML = '<div class="no-results">Aucun résultat trouvé pour cette recherche.</div>';
-                return;
-            }
-            
-            const groupedResults = {};
-            results.forEach(item => {
-                if (!groupedResults[item.reference]) {
-                    groupedResults[item.reference] = [];
-                }
-                groupedResults[item.reference].push(item);
-            });
-            
-            resultsSection.style.display = 'block';
-            resultsCount.textContent = `${results.length} article${results.length > 1 ? 's' : ''} dans ${Object.keys(groupedResults).length} référence${Object.keys(groupedResults).length > 1 ? 's' : ''}`;
-            
-            let html = '';
-            
-            Object.entries(groupedResults).forEach(([reference, items]) => {
-                const firstItem = items[0];
-                const referenceId = reference.replace(/\s+/g, '_');
-                
-                html += `
-                    <div class="product-card">
-                        <div class="product-header">
-                            <div>
-                                <div class="product-title">${reference}</div>
-                                <div class="product-brand">${firstItem.marque} - ${firstItem.famille}</div>
-                            </div>
-                        </div>
-                        
-                        <div class="product-details">
-                            <div class="detail-item">
-                                <div class="detail-label">Code Article</div>
-                                <div class="detail-value">${firstItem.codeArticle}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Couleur</div>
-                                <div class="detail-value">${firstItem.couleurFR}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Genre</div>
-                                <div class="detail-value">${firstItem.genre}</div>
-                            </div>
-                        </div>
-                        
-                        <div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 0.9rem; color: #6c757d;">
-                            <strong>Description:</strong> ${firstItem.descriptifFR}
-                        </div>
+    function stopEanScanner() {
+      isEanScanning = false;
+      
+      if (eanCodeReader) {
+        try {
+          eanCodeReader.reset();
+        } catch (e) {
+          console.log('Erreur lors de l\'arrêt de la caméra EAN:', e);
+        }
+        eanCodeReader = null;
+      }
+      
+      document.getElementById('eanVideo').style.display = 'none';
+      document.getElementById('eanScanButton').style.display = 'inline-block';
+      document.getElementById('eanStopButton').style.display = 'none';
+      document.getElementById('eanScannerContainer').style.display = 'none';
+    }
 
-                        <div class="quality-matrix">
-                            <h4>✅ Contrôle Qualité</h4>
-                            
-                            <!-- Contrôles généraux -->
-                            <div class="quality-grid">
-                                <div class="quality-criterion">
-                                    <span class="criterion-label">Shipping Marks</span>
-                                    <div class="checkbox-group">
-                                        <label><input type="radio" name="shipping_${referenceId}" value="ok"> OK</label>
-                                        <label><input type="radio" name="shipping_${referenceId}" value="pas_ok"> PAS OK</label>
-                                    </div>
-                                    <textarea class="criterion-remarks" name="shipping_remarks_${referenceId}" placeholder="Remarques sur les Shipping Marks..."></textarea>
-                                </div>
-                                <div class="quality-criterion">
-                                    <span class="criterion-label">EAN Colis</span>
-                                    <div class="checkbox-group">
-                                        <label><input type="radio" name="ean_colis_${referenceId}" value="ok"> OK</label>
-                                        <label><input type="radio" name="ean_colis_${referenceId}" value="pas_ok"> PAS OK</label>
-                                    </div>
-                                    <textarea class="criterion-remarks" name="ean_colis_remarks_${referenceId}" placeholder="Remarques sur l'EAN Colis..."></textarea>
-                                </div>
-                                <div class="quality-criterion">
-                                    <span class="criterion-label">État du Colis</span>
-                                    <div class="checkbox-group">
-                                        <label><input type="radio" name="etat_${referenceId}" value="ok"> OK</label>
-                                        <label><input type="radio" name="etat_${referenceId}" value="pas_ok"> PAS OK</label>
-                                    </div>
-                                    <textarea class="criterion-remarks" name="etat_remarks_${referenceId}" placeholder="Remarques sur l'état du colis..."></textarea>
-                                </div>
-                                <div class="quality-criterion">
-                                    <span class="criterion-label">Bande de Garantie</span>
-                                    <div class="checkbox-group">
-                                        <label><input type="radio" name="garantie_${referenceId}" value="ok"> OK</label>
-                                        <label><input type="radio" name="garantie_${referenceId}" value="pas_ok"> PAS OK</label>
-                                    </div>
-                                    <textarea class="criterion-remarks" name="garantie_remarks_${referenceId}" placeholder="Remarques sur la bande de garantie..."></textarea>
-                                </div>
-                                <div class="quality-criterion">
-                                    <span class="criterion-label">Zip</span>
-                                    <div class="checkbox-group">
-                                        <label><input type="radio" name="zip_${referenceId}" value="ok"> OK</label>
-                                        <label><input type="radio" name="zip_${referenceId}" value="pas_ok"> PAS OK</label>
-                                    </div>
-                                    <textarea class="criterion-remarks" name="zip_remarks_${referenceId}" placeholder="Remarques sur les zips..."></textarea>
-                                </div>
-                                <div class="quality-criterion">
-                                    <span class="criterion-label">Bouton</span>
-                                    <div class="checkbox-group">
-                                        <label><input type="radio" name="bouton_${referenceId}" value="ok"> OK</label>
-                                        <label><input type="radio" name="bouton_${referenceId}" value="pas_ok"> PAS OK</label>
-                                    </div>
-                                    <textarea class="criterion-remarks" name="bouton_remarks_${referenceId}" placeholder="Remarques sur les boutons..."></textarea>
-                                </div>
-                                <div class="quality-criterion">
-                                    <span class="criterion-label">Coloris</span>
-                                    <div class="checkbox-group">
-                                        <label><input type="radio" name="coloris_${referenceId}" value="ok"> OK</label>
-                                        <label><input type="radio" name="coloris_${referenceId}" value="pas_ok"> PAS OK</label>
-                                    </div>
-                                    <textarea class="criterion-remarks" name="coloris_remarks_${referenceId}" placeholder="Remarques sur le coloris..."></textarea>
-                                </div>
-                            </div>
-                            
-                            <!-- Section Test EAN par taille intégrée -->
-                            <div class="ean-section">
-                                <h5>🔍 Test EAN par Taille</h5>
-                                <div class="ean-quality-grid">
-                                    ${items.map(item => `
-                                        <div class="quality-criterion ean-criterion">
-                                            <span class="criterion-label">Taille ${item.taille}</span>
-                                            <div class="ean-code-display">${item.ean}</div>
-                                            <div class="checkbox-group">
-                                                <label>
-                                                    <input type="checkbox" name="ean_check_${referenceId}_${item.taille}" 
-                                                           onchange="updateEANStatus(this)"> 
-                                                    EAN Testé
-                                                </label>
-                                            </div>
-                                            <textarea class="criterion-remarks" name="ean_remarks_${referenceId}_${item.taille}" placeholder="Remarques sur l'EAN taille ${item.taille}..."></textarea>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                            
-                            <div class="quality-actions">
-                                <button class="reset-btn" onclick="resetQuality('${referenceId}')">
-                                    🔄 Reset
-                                </button>
-                                <button class="export-pdf-btn" onclick="exportToPDF('${referenceId}', '${reference}')">
-                                    📄 Export PDF
-                                </button>
-                            </div>
-                            
-                            <div class="remarks-section">
-                                <label for="remarks_${referenceId}">📝 Remarques :</label>
-                                <textarea id="remarks_${referenceId}" placeholder="Ajouter des remarques sur ce produit..."></textarea>
-                            </div>
-                            
-                            <div class="photo-section">
-                                <label>📷 Photos du contrôle qualité :</label>
-                                <div class="photo-upload">
-                                    <input type="file" id="photoInput_${referenceId}" accept="image/*" multiple>
-                                    <button onclick="addPhotos('${referenceId}')">Ajouter</button>
-                                </div>
-                                <div class="photo-gallery" id="photoGallery_${referenceId}"></div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            resultsContainer.innerHTML = html;
-            
-            // Restaurer les validations après le rendu
+    function checkEanForReference() {
+      const scannedEan = document.getElementById("eanInput").value.trim();
+      
+      if (!scannedEan) {
+        alert("⚠️ Veuillez saisir ou scanner un code EAN");
+        return;
+      }
+
+      // Vérifier si cet EAN appartient à la référence actuelle
+      const matchingItem = referenceEanList.find(item => item[COL_EAN] === scannedEan);
+      
+      if (matchingItem) {
+        if (checkedEans.has(scannedEan)) {
+          alert("ℹ️ Cet EAN a déjà été contrôlé");
+        } else {
+          checkedEans.add(scannedEan);
+          displayEanList();
+          updateEanProgress();
+          
+          // Feedback positif
+          if (navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]);
+          }
+          
+          // Animation de succès
+          const itemIndex = referenceEanList.findIndex(item => item[COL_EAN] === scannedEan);
+          const itemElement = document.getElementById(`ean-item-${itemIndex}`);
+          if (itemElement) {
+            itemElement.style.transform = 'scale(1.05)';
             setTimeout(() => {
-                restoreEANValidations();
-                restoreQualityValidations();
-                loadPhotos();
-            }, 100);
+              itemElement.style.transform = 'scale(1)';
+            }, 200);
+          }
         }
-
-        // Gestion des photos
-        let productPhotos = {};
-
-        function addPhotos(referenceId) {
-            const fileInput = document.getElementById(`photoInput_${referenceId}`);
-            const files = fileInput.files;
-            
-            if (files.length === 0) {
-                alert('Veuillez sélectionner au moins une photo.');
-                return;
-            }
-            
-            if (!productPhotos[referenceId]) {
-                productPhotos[referenceId] = [];
-            }
-            
-            for (let file of files) {
-                if (file.type.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                    if (!e.target.result) return;
-                        const photoData = {
-                            name: file.name,
-                            data: e.target.result,
-                            size: (file.size / 1024).toFixed(1) + ' KB'
-                        };
-                        productPhotos[referenceId].push(photoData);
-                        displayPhotos(referenceId);
-                        savePhotos();
-                    };
-                    reader.readAsDataURL(file);
-                }
-            }
-            
-            fileInput.value = '';
+      } else {
+        // Vérifier si cet EAN existe dans la base mais pour une autre référence
+        const otherItem = database.find(item => item[COL_EAN] === scannedEan);
+        
+        if (otherItem) {
+          alert(`❌ Cet EAN appartient à une autre référence :\n${otherItem[COL_REF]}\n\nRéférence attendue : ${currentReference}`);
+        } else {
+          alert("❌ Code EAN non trouvé dans la base de données");
         }
+      }
+      
+      // Vider le champ de saisie
+      document.getElementById("eanInput").value = "";
+    }
 
-        function displayPhotos(referenceId) {
-            const gallery = document.getElementById(`photoGallery_${referenceId}`);
-            if (!gallery || !productPhotos[referenceId]) return;
-            
-            gallery.innerHTML = '';
-            
-            productPhotos[referenceId].forEach((photo, index) => {
-                const photoItem = document.createElement('div');
-                photoItem.className = 'photo-item';
-                photoItem.innerHTML = `
-                    <img src="${photo.data}" alt="${photo.name}" onclick="viewPhoto('${photo.data}', '${photo.name}')">
-                    <button class="photo-remove" onclick="removePhoto('${referenceId}', ${index})" title="Supprimer">×</button>
-                    <div class="photo-info">${photo.size}</div>
-                `;
-                gallery.appendChild(photoItem);
-            });
-        }
+    function goBackToProductControl() {
+      // Retourner à l'étape 4 (contrôle produit)
+      document.getElementById("step5").classList.remove("active");
+      document.getElementById("step5").classList.add("hidden");
+      
+      document.getElementById("step4").classList.add("active");
+      document.getElementById("step4").classList.remove("completed");
 
-        function removePhoto(referenceId, index) {
-            if (confirm('Supprimer cette photo ?')) {
-                productPhotos[referenceId].splice(index, 1);
-                displayPhotos(referenceId);
-                savePhotos();
-            }
-        }
+      // Arrêter le scanner EAN s'il est en cours
+      stopEanScanner();
 
-        function viewPhoto(src, name) {
-            const modal = document.createElement('div');
-            modal.style.cssText = `
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-                background: rgba(0,0,0,0.8); display: flex; align-items: center; 
-                justify-content: center; z-index: 1000; cursor: pointer;
-            `;
-            modal.innerHTML = `
-                <div style="max-width: 90%; max-height: 90%; text-align: center;">
-                    <img src="${src}" style="max-width: 100%; max-height: 80vh; border-radius: 8px;">
-                    <div style="color: white; margin-top: 10px; font-size: 1.1rem;">${name}</div>
-                    <div style="color: #ccc; margin-top: 5px; font-size: 0.9rem;">Cliquez pour fermer</div>
-                </div>
-            `;
-            modal.onclick = () => document.body.removeChild(modal);
-            document.body.appendChild(modal);
-        }
+      // Scroll vers la section de contrôle produit
+      document.getElementById("step4").scrollIntoView({ behavior: 'smooth' });
+    }
 
-        function savePhotos() {
-            const photosToSave = {};
-            Object.keys(productPhotos).forEach(key => {
-                const reference = key.replace(/_/g, ' ');
-                photosToSave[reference] = productPhotos[key];
-            });
-            localStorage.setItem('productPhotos', JSON.stringify(photosToSave));
-        }
+    function validateCompleteControl() {
+      if (checkedEans.size < referenceEanList.length) {
+        alert("⚠️ Tous les EAN de la référence n'ont pas été contrôlés");
+        return;
+      }
 
-        function updateSearchStats(count, query) {
-            const searchStats = document.getElementById('searchStats');
-            if (query) {
-                searchStats.textContent = `Recherche: "${query}" - ${count} résultat${count > 1 ? 's' : ''}`;
-            } else {
-                searchStats.textContent = '';
-            }
-        }
+      console.log('Résultats du contrôle carton:', packageQualityResults);
+      console.log('Résultats du contrôle produit:', productQualityResults);
+      console.log('Produit contrôlé:', currentProduct);
+      console.log('Référence contrôlée:', currentReference);
+      console.log('EAN contrôlés:', Array.from(checkedEans));
+      console.log('Liste complète des EAN de la référence:', referenceEanList);
 
-        // Recherche en temps réel
-        document.getElementById('referenceSearch').addEventListener('input', function() {
-            if (this.value.length >= 2) {
-                document.getElementById('referenceSelect').value = '';
-                searchProducts();
-            }
+      // Calculer les statistiques finales
+      const packageIssues = Object.values(packageQualityResults).filter(result => result.status === 'not_ok').length;
+      const productIssues = Object.values(productQualityResults).filter(result => result.status === 'not_ok').length;
+      const totalQualityIssues = packageIssues + productIssues;
+      const totalEanControlled = checkedEans.size;
+      const totalEanExpected = referenceEanList.length;
+
+      const qualityStatus = totalQualityIssues === 0 ? 'CONFORME' : 'NON CONFORME';
+      const eanStatus = totalEanControlled === totalEanExpected ? 'COMPLET' : 'INCOMPLET';
+
+      // Afficher un résumé complet
+      alert(`🎉 Contrôle qualité complet terminé !\n\n` +
+            `📦 Qualité : ${qualityStatus}\n` +
+            `   - Problèmes carton : ${packageIssues}\n` +
+            `   - Problèmes produit : ${productIssues}\n\n` +
+            `📋 EAN : ${eanStatus}\n` +
+            `   - Contrôlés : ${totalEanControlled}/${totalEanExpected}\n` +
+            `   - Référence : ${currentReference}\n\n` +
+            `✅ Contrôle enregistré avec succès !`);
+
+      // Ici vous pouvez ajouter la logique pour sauvegarder tous les résultats
+      // Par exemple : envoi vers une API, sauvegarde locale, génération de rapport, etc.
+
+      // Réinitialiser pour un nouveau contrôle
+      resetQualityControl();
+    }
+
+    function resetQualityControl() {
+      // Réinitialiser l'état des sections
+      document.getElementById("step4").classList.add("hidden");
+      document.getElementById("step4").classList.remove("active");
+      document.getElementById("step3").classList.add("hidden");
+      document.getElementById("step3").classList.remove("active");
+      document.getElementById("step2").classList.add("active");
+      document.getElementById("step2").classList.remove("completed");
+
+      // Vider les champs
+      document.getElementById("barcodeInput").value = '';
+      document.getElementById("results").style.display = "none";
+
+      // Réinitialiser les variables
+      currentProduct = null;
+      packageQualityResults = {};
+      productQualityResults = {};
+
+      // Remettre le focus sur la recherche
+      document.getElementById("step2").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Gérer la saisie manuelle avec Enter
+    document.addEventListener('DOMContentLoaded', function() {
+      const barcodeInput = document.getElementById('barcodeInput');
+      if (barcodeInput) {
+        barcodeInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            findProduct();
+          }
         });
+      }
 
-        document.getElementById('referenceSelect').addEventListener('change', function() {
-            document.getElementById('referenceSearch').value = '';
-            searchProducts();
+      const eanInput = document.getElementById('eanInput');
+      if (eanInput) {
+        eanInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            checkEanForReference();
+          }
         });
+      }
+    });
 
-        function updateEANStatus(checkbox) {
-            const eanCriterion = checkbox.closest('.ean-criterion');
-            if (checkbox.checked) {
-                eanCriterion.classList.add('validated');
-            } else {
-                eanCriterion.classList.remove('validated');
-            }
-            saveEANValidations();
-        }
-
-        function saveEANValidations() {
-            const allEANChecks = document.querySelectorAll('input[name^="ean_check_"]:checked');
-            const validatedEANs = Array.from(allEANChecks).map(checkbox => {
-                const name = checkbox.name;
-                const parts = name.split('_');
-                const reference = parts.slice(2, -1).join('_');
-                const taille = parts[parts.length - 1];
-                return {
-                    reference: reference.replace(/_/g, ' '),
-                    taille: taille,
-                    timestamp: new Date().toISOString()
-                };
-            });
-            localStorage.setItem('validatedEANs', JSON.stringify(validatedEANs));
-        }
-
-        function restoreEANValidations() {
-            const validatedEANs = JSON.parse(localStorage.getItem('validatedEANs') || '[]');
-            validatedEANs.forEach(validation => {
-                const checkbox = document.querySelector(`input[name="ean_check_${validation.reference.replace(/\s+/g, '_')}_${validation.taille}"]`);
-                if (checkbox) {
-                    checkbox.checked = true;
-                    updateEANStatus(checkbox);
-                }
-            });
-        }
-
-        function validateQuality(referenceId) {
-            const matrix = document.querySelector(`input[name*="${referenceId}"]`).closest('.quality-matrix');
-            const radios = matrix.querySelectorAll('input[type="radio"]:checked');
-            
-            if (radios.length < 7) {
-                alert('⚠️ Veuillez compléter tous les critères de contrôle avant de valider.');
-                return;
-            }
-            
-            matrix.classList.add('quality-validated');
-            
-            const allRadios = matrix.querySelectorAll('input[type="radio"]');
-            const allTextareas = matrix.querySelectorAll('textarea');
-            allRadios.forEach(radio => radio.disabled = true);
-            allTextareas.forEach(textarea => textarea.disabled = true);
-            
-            const results = {};
-            const criterionRemarks = {};
-            
-            // Récupérer les réponses radio
-            radios.forEach(radio => {
-                const criterionName = radio.name.split('_')[0];
-                results[criterionName] = radio.value;
-            });
-            
-            // Récupérer les remarques pour chaque critère
-            const remarkTextareas = matrix.querySelectorAll('textarea[name*="_remarks_"]');
-            remarkTextareas.forEach(textarea => {
-                if (textarea.value.trim()) {
-                    const criterionName = textarea.name.replace(`_remarks_${referenceId}`, '').replace(`_${referenceId}`, '');
-                    criterionRemarks[criterionName] = textarea.value.trim();
-                }
-            });
-            
-            const generalRemarks = document.getElementById(`remarks_${referenceId}`).value;
-            
-            const validationData = {
-                reference: referenceId.replace(/_/g, ' '),
-                results: results,
-                criterionRemarks: criterionRemarks,
-                remarks: generalRemarks,
-                timestamp: new Date().toISOString(),
-                validator: 'Utilisateur'
-            };
-            
-            const existingValidations = JSON.parse(localStorage.getItem('qualityValidations') || '[]');
-            const existingIndex = existingValidations.findIndex(v => v.reference === validationData.reference);
-            if (existingIndex >= 0) {
-                existingValidations[existingIndex] = validationData;
-            } else {
-                existingValidations.push(validationData);
-            }
-            localStorage.setItem('qualityValidations', JSON.stringify(existingValidations));
-            
-            alert('✅ Contrôle qualité validé et sauvegardé !');
-        }
-
-        function restoreQualityValidations() {
-            const qualityValidations = JSON.parse(localStorage.getItem('qualityValidations') || '[]');
-            qualityValidations.forEach(validation => {
-                const referenceId = validation.reference.replace(/\s+/g, '_');
-                const matrix = document.querySelector(`input[name*="${referenceId}"]`)?.closest('.quality-matrix');
-                if (!matrix) return;
-                
-                // Restaurer les réponses radio
-                Object.entries(validation.results).forEach(([criterion, value]) => {
-                    const radio = matrix.querySelector(`input[name="${criterion}_${referenceId}"][value="${value}"]`);
-                    if (radio) radio.checked = true;
-                });
-                
-                // Restaurer les remarques par critère
-                if (validation.criterionRemarks) {
-                    Object.entries(validation.criterionRemarks).forEach(([criterion, remark]) => {
-                        const textarea = matrix.querySelector(`textarea[name="${criterion}_remarks_${referenceId}"], textarea[name*="${criterion}_remarks_${referenceId}"]`);
-                        if (textarea) textarea.value = remark;
-                    });
-                }
-                
-                // Restaurer les remarques générales
-                const remarksField = document.getElementById(`remarks_${referenceId}`);
-                if (remarksField) remarksField.value = validation.remarks || '';
-                
-                // Marquer comme validé
-                matrix.classList.add('quality-validated');
-                const allRadios = matrix.querySelectorAll('input[type="radio"]');
-                const allTextareas = matrix.querySelectorAll('textarea');
-                allRadios.forEach(radio => radio.disabled = true);
-                allTextareas.forEach(textarea => textarea.disabled = true);
-            });
-        }
-
-        function resetQuality(referenceId) {
-            if (confirm('🔄 Êtes-vous sûr de vouloir réinitialiser ce contrôle qualité complet ?')) {
-                const matrix = document.querySelector(`input[name*="${referenceId}"]`).closest('.quality-matrix');
-                
-                const allInputs = matrix.querySelectorAll('input, textarea');
-                allInputs.forEach(input => {
-                    input.disabled = false;
-                    if (input.type === 'radio' || input.type === 'checkbox') {
-                        input.checked = false;
-                    } else if (input.tagName === 'TEXTAREA') {
-                        input.value = '';
-                    }
-                });
-                
-                const generalTextarea = document.getElementById(`remarks_${referenceId}`);
-                if (generalTextarea) generalTextarea.value = '';
-                
-                matrix.classList.remove('quality-validated');
-                
-                const eanCriteria = matrix.querySelectorAll('.ean-criterion');
-                eanCriteria.forEach(criterion => criterion.classList.remove('validated'));
-                
-                // Supprimer de localStorage
-                const existingValidations = JSON.parse(localStorage.getItem('qualityValidations') || '[]');
-                const filteredValidations = existingValidations.filter(v => v.reference !== referenceId.replace(/_/g, ' '));
-                localStorage.setItem('qualityValidations', JSON.stringify(filteredValidations));
-                
-                saveEANValidations();
-                
-                alert('🔄 Contrôle qualité complet réinitialisé.');
-            }
-        }
-
-        function exportToPDF(referenceId, originalReference) {
-            // Vérification avant export
-            const matrix = document.querySelector(`input[name*="${referenceId}"]`).closest('.quality-matrix');
-            const radios = matrix.querySelectorAll('input[type="radio"]:checked');
-            
-            if (radios.length < 7) {
-                alert('⚠️ Impossible d\'exporter le PDF : Veuillez compléter tous les critères de contrôle avant l\'export.\n\nCritères manquants : ' + (7 - radios.length));
-                return;
-            }
-            
-            // Validation automatique avant export
-            validateQualityForExport(referenceId);
-            
-            const referenceData = database.filter(item => item.reference === originalReference);
-            if (referenceData.length === 0) {
-                alert('❌ Aucune donnée trouvée pour cette référence.');
-                return;
-            }
-
-            const firstItem = referenceData[0];
-            const qualityValidations = JSON.parse(localStorage.getItem('qualityValidations') || '[]');
-            const qualityData = qualityValidations.find(v => v.reference === originalReference);
-            const eanValidations = JSON.parse(localStorage.getItem('validatedEANs') || '[]');
-            const eanData = eanValidations.filter(v => v.reference === originalReference);
-
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            let yPosition = 20;
-            
-            doc.setFontSize(18);
-            doc.setFont(undefined, 'bold');
-            doc.text('MATRICE QUALITÉ', 20, yPosition);
-            
-            yPosition += 10;
-            doc.setFontSize(14);
-            doc.setFont(undefined, 'normal');
-            doc.text(`Date: ${new Date().toLocaleString('fr-FR')}`, 20, yPosition);
-            
-            yPosition += 20;
-            
-            doc.setFontSize(16);
-            doc.setFont(undefined, 'bold');
-            doc.text('INFORMATIONS PRODUIT', 20, yPosition);
-            
-            yPosition += 10;
-            doc.setFontSize(11);
-            doc.setFont(undefined, 'normal');
-            
-            const productInfo = [
-                `Référence: ${originalReference}`,
-                `Code Article: ${firstItem.codeArticle}`,
-                `Marque: ${firstItem.marque}`,
-                `Famille: ${firstItem.famille}`,
-                `Genre: ${firstItem.genre}`,
-                `Couleur: ${firstItem.couleurFR}`
-            ];
-            
-            productInfo.forEach(info => {
-                doc.text(info, 20, yPosition);
-                yPosition += 7;
-            });
-            
-            yPosition += 10;
-            
-            doc.setFontSize(14);
-            doc.setFont(undefined, 'bold');
-            doc.text('TAILLES ET EAN', 20, yPosition);
-            
-            yPosition += 10;
-            doc.setFontSize(10);
-            doc.setFont(undefined, 'normal');
-            
-            referenceData.forEach(item => {
-                const eanTested = eanData.some(ean => ean.taille === item.taille);
-                const status = eanTested ? '[✓] TESTÉ' : '[ ] NON TESTÉ';
-                doc.text(`Taille ${item.taille}: ${item.ean} ${status}`, 20, yPosition);
-                yPosition += 6;
-                
-                // Ajouter les remarques EAN spécifiques à cette taille s'il y en a
-                const eanRemarkField = document.querySelector(`textarea[name="ean_remarks_${referenceId}_${item.taille}"]`);
-                if (eanRemarkField && eanRemarkField.value.trim()) {
-                    doc.setFontSize(9);
-                    const eanRemark = doc.splitTextToSize(`  → ${eanRemarkField.value.trim()}`, 165);
-                    doc.text(eanRemark, 25, yPosition);
-                    yPosition += eanRemark.length * 5;
-                    doc.setFontSize(10);
-                }
-            });
-            
-            yPosition += 10;
-            
-            doc.setFontSize(14);
-            doc.setFont(undefined, 'bold');
-            doc.text('CONTRÔLE QUALITÉ', 20, yPosition);
-            
-            yPosition += 10;
-            doc.setFontSize(10);
-            doc.setFont(undefined, 'normal');
-            
-            if (qualityData) {
-                const criteria = [
-                    { key: 'shipping', label: 'Shipping Marks' },
-                    { key: 'ean', label: 'EAN Colis' },
-                    { key: 'etat', label: 'État du Colis' },
-                    { key: 'garantie', label: 'Bande de Garantie' },
-                    { key: 'zip', label: 'Zip' },
-                    { key: 'bouton', label: 'Bouton' },
-                    { key: 'coloris', label: 'Coloris' }
-                ];
-                
-                criteria.forEach(criterion => {
-                    const value = qualityData.results[criterion.key];
-                    const status = value ? (value.toLowerCase() === 'ok' ? '[✓] OK' : '[✗] PAS OK') : '[ ] NON RENSEIGNÉ';
-                    doc.text(`${criterion.label}: ${status}`, 20, yPosition);
-                    yPosition += 6;
-                    
-                    // Ajouter les remarques spécifiques du critère s'il y en a
-                    if (qualityData.criterionRemarks && qualityData.criterionRemarks[criterion.key]) {
-                        doc.setFontSize(9);
-                        const criterionRemark = doc.splitTextToSize(`  → ${qualityData.criterionRemarks[criterion.key]}`, 165);
-                        doc.text(criterionRemark, 25, yPosition);
-                        yPosition += criterionRemark.length * 5;
-                        doc.setFontSize(10);
-                    }
-                });
-                
-                if (qualityData.remarks) {
-                    yPosition += 5;
-                    doc.text('Remarques générales:', 20, yPosition);
-                    yPosition += 6;
-                    const remarks = doc.splitTextToSize(qualityData.remarks, 170);
-                    doc.text(remarks, 20, yPosition);
-                    yPosition += remarks.length * 6;
-                }
-                
-                yPosition += 10;
-                doc.text(`Validé le: ${new Date(qualityData.timestamp).toLocaleString('fr-FR')}`, 20, yPosition);
-                doc.text(`Par: ${qualityData.validator}`, 20, yPosition + 6);
-                yPosition += 15;
-                
-            } else {
-                doc.text('❌ Contrôle qualité non effectué', 20, yPosition);
-                yPosition += 15;
-            }
-            
-            // Ajouter les photos si présentes
-            const photos = productPhotos[referenceId];
-            if (photos && photos.length > 0) {
-                // Vérifier s'il reste de la place sur la page actuelle
-                if (yPosition > 200) {
-                    doc.addPage();
-                    yPosition = 20;
-                }
-                
-                doc.setFontSize(14);
-                doc.setFont(undefined, 'bold');
-                doc.text('PHOTOS DU CONTRÔLE', 20, yPosition);
-                yPosition += 15;
-                
-                const photosPerRow = 2;
-                const photoWidth = 80;
-                const photoHeight = 60;
-                const margin = 10;
-                
-                photos.forEach((photo, index) => {
-                    const row = Math.floor(index / photosPerRow);
-                    const col = index % photosPerRow;
-                    
-                    const x = 20 + col * (photoWidth + margin);
-                    const y = yPosition + row * (photoHeight + 15);
-                    
-                    // Vérifier si on doit ajouter une nouvelle page
-                    if (y + photoHeight > 280) {
-                        doc.addPage();
-                        yPosition = 20;
-                        const newRow = Math.floor((index - (row * photosPerRow)) / photosPerRow);
-                        const newY = yPosition + newRow * (photoHeight + 15);
-                        
-                        try {
-                            doc.addImage(photo.data, 'JPEG', x, newY, photoWidth, photoHeight);
-                            doc.setFontSize(8);
-                            doc.text(photo.name, x, newY + photoHeight + 8);
-                        } catch (e) {
-                            console.log('Erreur lors de l\'ajout de l\'image:', e);
-                        }
-                    } else {
-                        try {
-                            doc.addImage(photo.data, 'JPEG', x, y, photoWidth, photoHeight);
-                            doc.setFontSize(8);
-                            doc.text(photo.name, x, y + photoHeight + 8);
-                        } catch (e) {
-                            console.log('Erreur lors de l\'ajout de l\'image:', e);
-                        }
-                    }
-                });
-                
-                // Calculer la nouvelle position Y après les photos
-                const totalRows = Math.ceil(photos.length / photosPerRow);
-                yPosition += totalRows * (photoHeight + 15) + 10;
-            }
-            
-            // Description produit (si reste de la place)
-            if (yPosition < 250) {
-                yPosition += 10;
-                doc.setFontSize(14);
-                doc.setFont(undefined, 'bold');
-                doc.text('DESCRIPTION', 20, yPosition);
-                
-                yPosition += 10;
-                doc.setFontSize(9);
-                doc.setFont(undefined, 'normal');
-                const description = doc.splitTextToSize(firstItem.descriptifFR, 170);
-                doc.text(description, 20, yPosition);
-            }
-            
-            // Pied de page sur la dernière page
-            const pageCount = doc.internal.getNumberOfPages();
-            doc.setPage(pageCount);
-            doc.setFontSize(8);
-            doc.setFont(undefined, 'italic');
-            doc.text('Document généré automatiquement par Matrice Qualité', 20, 285);
-            
-            const filename = `${originalReference.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_')}.pdf`;
-            if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-                window.open(doc.output('bloburl'));
-            } else {
-                
-const blob = doc.output('blob');
-const blobUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-const link = document.createElement('a');
-link.href = blobUrl;
-link.download = filename;
-document.body.appendChild(link);
-link.click();
-document.body.removeChild(link);
-
-            }
-            
-            alert(`✅ Contrôle qualité validé et PDF exporté: ${filename}`);
-        }
-
-        // Fonction de validation automatique pour l'export (sans interface utilisateur)
-        function validateQualityForExport(referenceId) {
-            const matrix = document.querySelector(`input[name*="${referenceId}"]`).closest('.quality-matrix');
-            const radios = matrix.querySelectorAll('input[type="radio"]:checked');
-            
-            // Marquer visuellement comme validé
-            matrix.classList.add('quality-validated');
-            
-            // Désactiver les contrôles pour indiquer la validation
-            const allRadios = matrix.querySelectorAll('input[type="radio"]');
-            const allTextareas = matrix.querySelectorAll('textarea');
-            allRadios.forEach(radio => radio.disabled = true);
-            allTextareas.forEach(textarea => textarea.disabled = true);
-            
-            const results = {};
-            const criterionRemarks = {};
-            
-            // Récupérer les réponses radio
-            radios.forEach(radio => {
-                const criterionName = radio.name.split('_')[0];
-                results[criterionName] = radio.value;
-            });
-            
-            // Récupérer les remarques pour chaque critère
-            const remarkTextareas = matrix.querySelectorAll('textarea[name*="_remarks_"]');
-            remarkTextareas.forEach(textarea => {
-                if (textarea.value.trim()) {
-                    const criterionName = textarea.name.replace(`_remarks_${referenceId}`, '').replace(`_${referenceId}`, '');
-                    criterionRemarks[criterionName] = textarea.value.trim();
-                }
-            });
-            
-            const generalRemarks = document.getElementById(`remarks_${referenceId}`).value;
-            
-            const validationData = {
-                reference: referenceId.replace(/_/g, ' '),
-                results: results,
-                criterionRemarks: criterionRemarks,
-                remarks: generalRemarks,
-                timestamp: new Date().toISOString(),
-                validator: 'Utilisateur'
-            };
-            
-            const existingValidations = JSON.parse(localStorage.getItem('qualityValidations') || '[]');
-            const existingIndex = existingValidations.findIndex(v => v.reference === validationData.reference);
-            if (existingIndex >= 0) {
-                existingValidations[existingIndex] = validationData;
-            } else {
-                existingValidations.push(validationData);
-            }
-            localStorage.setItem('qualityValidations', JSON.stringify(existingValidations));
-            
-            // Sauvegarder aussi les remarques EAN dans le localStorage des EAN
-            const eanRemarkTextareas = matrix.querySelectorAll('textarea[name*="ean_remarks_"]');
-            const eanValidations = JSON.parse(localStorage.getItem('validatedEANs') || '[]');
-            
-            eanRemarkTextareas.forEach(textarea => {
-                if (textarea.value.trim()) {
-                    const name = textarea.name;
-                    const parts = name.split('_');
-                    const reference = parts.slice(2, -1).join('_');
-                    const taille = parts[parts.length - 1];
-                    
-                    // Trouver ou créer l'entrée EAN
-                    let eanEntry = eanValidations.find(v => v.reference === reference.replace(/_/g, ' ') && v.taille === taille);
-                    if (!eanEntry) {
-                        eanEntry = {
-                            reference: reference.replace(/_/g, ' '),
-                            taille: taille,
-                            timestamp: new Date().toISOString()
-                        };
-                        eanValidations.push(eanEntry);
-                    }
-                    eanEntry.remarks = textarea.value.trim();
-                }
-            });
-            
-            localStorage.setItem('validatedEANs', JSON.stringify(eanValidations));
-        }
-
-        function exportValidations() {
-            const qualityValidations = JSON.parse(localStorage.getItem('qualityValidations') || '[]');
-            const eanValidations = JSON.parse(localStorage.getItem('validatedEANs') || '[]');
-            
-            if (qualityValidations.length === 0 && eanValidations.length === 0) {
-                alert('📄 Aucune validation à exporter.');
-                return;
-            }
-            
-            let csv = 'Type,Référence,Taille,Critère,Valeur,Remarques,Date Validation,Validateur\n';
-            
-            qualityValidations.forEach(validation => {
-                Object.entries(validation.results).forEach(([criterion, value]) => {
-                    const row = [
-                        'Contrôle Qualité',
-                        validation.reference,
-                        '',
-                        criterion,
-                        value,
-                        `"${validation.remarks || ''}"`,
-                        new Date(validation.timestamp).toLocaleString('fr-FR'),
-                        validation.validator
-                    ].join(',');
-                    csv += row + '\n';
-                });
-                
-                // Ajouter les remarques par critère
-                if (validation.criterionRemarks) {
-                    Object.entries(validation.criterionRemarks).forEach(([criterion, remark]) => {
-                        const row = [
-                            'Remarque Critère',
-                            validation.reference,
-                            '',
-                            criterion,
-                            'Remarque',
-                            `"${remark}"`,
-                            new Date(validation.timestamp).toLocaleString('fr-FR'),
-                            validation.validator
-                        ].join(',');
-                        csv += row + '\n';
-                    });
-                }
-            });
-            
-            eanValidations.forEach(validation => {
-                const row = [
-                    'Test EAN',
-                    validation.reference,
-                    validation.taille,
-                    'EAN Testé',
-                    'OK',
-                    '',
-                    new Date(validation.timestamp).toLocaleString('fr-FR'),
-                    'Utilisateur'
-                ].join(',');
-                csv += row + '\n';
-            });
-            
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `validations_completes_${new Date().toISOString().split('T')[0]}.csv`;
-            link.click();
-            
-            const totalEANs = document.querySelectorAll('input[name^="ean_check_"]').length;
-            const validatedEANCount = eanValidations.length;
-            const percentage = totalEANs > 0 ? ((validatedEANCount / totalEANs) * 100).toFixed(1) : 0;
-            
-            alert(`📊 Export terminé !\n\nRésumé:\n• ${qualityValidations.length} contrôles qualité\n• ${validatedEANCount}/${totalEANs} EAN testés (${percentage}%)`);
-        }
-
-        // Chargement initial
-        loadDatabase();
-        setTimeout(() => {
-            searchProducts();
-        }, 500);
-    </script>
+    // Empêcher le zoom sur double-tap (iOS)
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+      const now = (new Date()).getTime();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, false);
+  </script>
 </body>
 </html>
