@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Scanner EAN - Contrôle Qualité</title>
+  <title>Matrice Contrôle Qualité</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script type="module">
@@ -649,7 +649,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>🔍 Scanner EAN - Contrôle Qualité</h1>
+    <h1>🔍 Matrice Contrôle Qualité</h1>
 
     <div class="section completed" id="step1">
       <h3>1️⃣ Charger la base de données</h3>
@@ -794,7 +794,7 @@
         
         <!-- Test du zip -->
         <div class="quality-criterion">
-          <div class="criterion-title">🤐 Test du zip (si existant)</div>
+          <div class="criterion-title">🤐 Vérification zip </div>
           <div class="radio-group">
             <label class="radio-option ok">
               <input type="radio" name="zip_test" value="ok" onchange="updateProductQualityStatus()">
@@ -848,7 +848,7 @@
 
         <!-- Contrôle Coloris -->
         <div class="quality-criterion">
-          <div class="criterion-title">🎨 Contrôle Coloris</div>
+          <div class="criterion-title">🎨 Vérification Coloris</div>
           <div class="radio-group">
             <label class="radio-option ok">
               <input type="radio" name="color_check" value="ok" onchange="updateProductQualityStatus()">
