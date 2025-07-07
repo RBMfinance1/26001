@@ -819,7 +819,6 @@
 
       <div class="button-row">
         <button onclick="proceedToProductControl()" id="packageValidateButton" disabled>➡️ Contrôler le produit</button>
-        <button onclick="generateQualityReport()" style="background: #dc3545;">📄 Générer rapport PDF</button>
         <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
       </div>
     </div>
@@ -937,7 +936,6 @@
 
       <div class="button-row">
         <button onclick="proceedToEanControl()" id="productValidateButton" disabled>➡️ Contrôler les EAN de la référence</button>
-        <button onclick="generateQualityReport()" style="background: #dc3545;">📄 Générer rapport PDF</button>
         <button onclick="goBackToPackageControl()" style="background: #ffc107; color: #000;">⬅️ Retour carton</button>
         <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
       </div>
@@ -993,7 +991,6 @@
       </div>
 
       <div class="button-row">
-        <button onclick="validateCompleteControl()" id="completeValidateButton" disabled>✅ Finaliser le contrôle complet</button>
         <button onclick="generateQualityReport()" id="generateReportButton" style="background: #dc3545;">📄 Générer rapport PDF</button>
         <button onclick="goBackToProductControl()" style="background: #ffc107; color: #000;">⬅️ Retour produit</button>
         <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
@@ -1590,9 +1587,6 @@
       document.getElementById('progressFill').style.width = percentage + '%';
       document.getElementById('progressText').textContent = `${checked} verifies + ${nonTested} non testes = ${processed} / ${total} EAN traites`;
 
-      // Activer le bouton de finalisation si tous les EAN sont traités (trouvés ou non testés)
-      document.getElementById('completeValidateButton').disabled = processed < total;
-
       // Afficher un résumé si tous les EAN sont traités
       if (processed === total && total > 0) {
         showEanValidationResult();
@@ -1655,7 +1649,7 @@
             <li><strong>${checked} EAN vérifiés</strong> ✅</li>
             ${nonTested > 0 ? `<li><strong>${nonTested} EAN non testés</strong> ⏭️</li>` : ''}
           </ul>
-          <p>Vous pouvez maintenant finaliser le contrôle complet.</p>
+          <p>Vous pouvez maintenant générer le rapport PDF complet.</p>
         </div>
       `;
       resultDiv.style.display = 'block';
@@ -1847,7 +1841,8 @@
       let yPosition = 20;
       const lineHeight = 8;
       const sectionSpacing = 15;
-      const pageHeight = 280;
+      // Ajustement pour format A4 et meilleure gestion de l'espace du pied de page
+      const pageHeight = 270; // Réduit de 280 à 270 pour laisser plus d'espace au pied de page
       
       // Couleurs
       const colors = {
@@ -1911,8 +1906,8 @@
       
       yPosition += sectionSpacing;
       
-      // Vérifier si nouvelle page nécessaire
-      if (yPosition > pageHeight - 50) {
+      // Vérifier si nouvelle page nécessaire avant chaque section
+      if (yPosition > pageHeight - 60) {
         doc.addPage();
         yPosition = 20;
       }
@@ -1943,6 +1938,12 @@
             const result = packageQualityResults[criterion.key];
             const isOk = result.status === 'ok';
             
+            // Vérifier si assez de place pour ce critère
+            if (yPosition > pageHeight - 30) {
+              doc.addPage();
+              yPosition = 20;
+            }
+            
             // Couleur du statut
             doc.setTextColor(isOk ? colors.success[0] : colors.danger[0], 
                            isOk ? colors.success[1] : colors.danger[1], 
@@ -1963,6 +1964,10 @@
               doc.setTextColor(100, 100, 100);
               const comments = doc.splitTextToSize('  -> ' + result.comment, 165);
               comments.forEach(line => {
+                if (yPosition > pageHeight - 15) {
+                  doc.addPage();
+                  yPosition = 20;
+                }
                 doc.text(line, 25, yPosition);
                 yPosition += 6;
               });
@@ -1992,7 +1997,7 @@
       yPosition += sectionSpacing;
       
       // Vérifier si nouvelle page nécessaire
-      if (yPosition > pageHeight - 50) {
+      if (yPosition > pageHeight - 60) {
         doc.addPage();
         yPosition = 20;
       }
@@ -2024,6 +2029,12 @@
             const result = productQualityResults[criterion.key];
             let status, color;
             
+            // Vérifier si assez de place pour ce critère
+            if (yPosition > pageHeight - 30) {
+              doc.addPage();
+              yPosition = 20;
+            }
+            
             if (result.status === 'ok') {
               status = '[OK]';
               color = colors.success;
@@ -2047,6 +2058,10 @@
               doc.setTextColor(100, 100, 100);
               const comments = doc.splitTextToSize('  -> ' + result.comment, 165);
               comments.forEach(line => {
+                if (yPosition > pageHeight - 15) {
+                  doc.addPage();
+                  yPosition = 20;
+                }
                 doc.text(line, 25, yPosition);
                 yPosition += 6;
               });
@@ -2127,6 +2142,12 @@
           const isFound = checkedEans.has(item[COL_EAN]);
           const isNonTested = nonTestedEans.has(item[COL_EAN]);
           
+          // Vérifier si assez de place pour cet EAN
+          if (yPosition > pageHeight - 15) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          
           let status, color;
           if (isFound) {
             status = '[VERIFIE]';
@@ -2145,12 +2166,6 @@
           doc.text(status, 130, yPosition);
           doc.setTextColor(0, 0, 0);
           yPosition += 6;
-          
-          // Vérifier si nouvelle page nécessaire
-          if (yPosition > pageHeight - 20) {
-            doc.addPage();
-            yPosition = 20;
-          }
         });
       } else {
         doc.setTextColor(colors.danger[0], colors.danger[1], colors.danger[2]);
@@ -2240,11 +2255,10 @@
                 // Ajouter une nouvelle page et continuer
                 doc.addPage();
                 yPosition = 20;
-                startYForCriterion = yPosition;
                 
                 // Recalculer la position pour la nouvelle page
                 const newRow = Math.floor(index / photosPerRow) - Math.floor(photos.findIndex(p => photos.indexOf(p) === index && y + photoHeight > pageHeight - 10) / photosPerRow);
-                const newY = startYForCriterion + newRow * (photoHeight + 20);
+                const newY = yPosition + newRow * (photoHeight + 20);
                 
                 try {
                   doc.addImage(photo.data, 'JPEG', x, newY, photoWidth, photoHeight);
