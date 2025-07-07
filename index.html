@@ -222,6 +222,12 @@
       pointer-events: none;
     }
     
+    /* Cadre spécifique pour le scanner EAN */
+    .ean-scanner-overlay .scanner-frame {
+      width: 250px;
+      height: 150px;
+    }
+    
     .scanner-corners {
       position: absolute;
       width: 20px;
@@ -651,6 +657,12 @@
         height: 120px;
       }
       
+      /* Cadre EAN adapté mobile */
+      .ean-scanner-overlay .scanner-frame {
+        width: 200px;
+        height: 120px;
+      }
+      
       .radio-group {
         flex-direction: column;
         align-items: flex-start;
@@ -941,7 +953,7 @@
           </div>
           
           <div id="eanScannerContainer" style="display:none;">
-            <div class="scanner-overlay">
+            <div class="scanner-overlay ean-scanner-overlay">
               <video id="eanVideo" playsinline></video>
               <div class="scanner-frame">
                 <div class="scanner-corners corner-tl"></div>
@@ -1801,16 +1813,366 @@
         alertMessage += `⚠️ Attention : ${nonTestedEan} EAN n'ont pas été testés physiquement.\n\n`;
       }
       
-      alertMessage += `✅ Contrôle enregistré avec succès !`;
+      alertMessage += `✅ Contrôle enregistré avec succès !\n\n📄 Voulez-vous générer le rapport PDF ?`;
       
-      alert(alertMessage);
-
-      // Ici vous pouvez ajouter la logique pour sauvegarder tous les résultats
-      // Les photos sont stockées en base64 dans criterionPhotos
-      // Par exemple : envoi vers une API, sauvegarde locale, génération de rapport, etc.
+      if (confirm(alertMessage)) {
+        generateQualityReport();
+      }
 
       // Réinitialiser pour un nouveau contrôle
       resetQualityControl();
+    }
+
+    // Fonction de génération du rapport PDF complet
+    function generateQualityReport() {
+      if (!currentProduct || !packageQualityResults || !productQualityResults) {
+        alert("❌ Données de contrôle incomplètes pour générer le rapport");
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      
+      // Configuration des couleurs et styles
+      const primaryColor = [102, 126, 234]; // #667eea
+      const successColor = [40, 167, 69];   // #28a745
+      const warningColor = [255, 193, 7];   // #ffc107
+      const dangerColor = [220, 53, 69];    // #dc3545
+      
+      let yPosition = 15;
+      
+      // === EN-TÊTE DU RAPPORT ===
+      doc.setFillColor(...primaryColor);
+      doc.rect(0, 0, 210, 40, 'F');
+      
+      // Titre principal
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.setFont(undefined, 'bold');
+      doc.text('RAPPORT DE CONTRÔLE QUALITÉ', 105, 20, { align: 'center' });
+      
+      // Date et heure
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'normal');
+      const now = new Date();
+      const dateTime = `Généré le ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR')}`;
+      doc.text(dateTime, 105, 30, { align: 'center' });
+      
+      yPosition = 50;
+      doc.setTextColor(0, 0, 0);
+      
+      // === INFORMATIONS PRODUIT ===
+      doc.setFillColor(248, 249, 250);
+      doc.rect(10, yPosition, 190, 45, 'F');
+      doc.setDrawColor(222, 226, 230);
+      doc.rect(10, yPosition, 190, 45, 'S');
+      
+      yPosition += 8;
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(...primaryColor);
+      doc.text('📦 INFORMATIONS PRODUIT', 15, yPosition);
+      
+      yPosition += 8;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      const productInfo = [
+        [`Référence:`, currentProduct[COL_REF] || 'N/A'],
+        [`Code Article:`, currentProduct[COL_CODE] || 'N/A'],
+        [`Marque:`, currentProduct[COL_MARQUE] || 'N/A'],
+        [`Couleur:`, currentProduct[COL_COULEUR] || 'N/A'],
+        [`Taille:`, currentProduct[COL_TAILLE] || 'N/A'],
+        [`EAN:`, currentProduct[COL_EAN] || 'N/A']
+      ];
+      
+      productInfo.forEach(([label, value], index) => {
+        const xPos = index % 2 === 0 ? 15 : 110;
+        const yPos = yPosition + Math.floor(index / 2) * 6;
+        doc.setFont(undefined, 'bold');
+        doc.text(label, xPos, yPos);
+        doc.setFont(undefined, 'normal');
+        doc.text(value, xPos + 35, yPos);
+      });
+      
+      yPosition += 50;
+      
+      // === CONTRÔLE QUALITÉ CARTON ===
+      doc.setFillColor(232, 244, 248);
+      doc.rect(10, yPosition, 190, 35, 'F');
+      doc.setDrawColor(190, 229, 235);
+      doc.rect(10, yPosition, 190, 35, 'S');
+      
+      yPosition += 8;
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(...primaryColor);
+      doc.text('📋 CONTRÔLE QUALITÉ - CARTON', 15, yPosition);
+      
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      const packageCriteria = [
+        { key: 'shipping_mark', label: 'Shipping Mark' },
+        { key: 'package_condition', label: 'État du colis' },
+        { key: 'warranty_seal', label: 'Bande de garantie' }
+      ];
+      
+      packageCriteria.forEach((criterion, index) => {
+        const result = packageQualityResults[criterion.key];
+        const status = result ? result.status : 'non_renseigné';
+        const statusText = status === 'ok' ? '✅ OK' : status === 'not_ok' ? '❌ PAS OK' : '❓ Non renseigné';
+        const color = status === 'ok' ? successColor : status === 'not_ok' ? dangerColor : [108, 117, 125];
+        
+        doc.setTextColor(...color);
+        doc.setFont(undefined, 'bold');
+        doc.text(statusText, 15, yPosition);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont(undefined, 'normal');
+        doc.text(`${criterion.label}`, 35, yPosition);
+        
+        // Commentaire si présent
+        if (result && result.comment) {
+          doc.setFontSize(9);
+          doc.setTextColor(108, 117, 125);
+          const comment = doc.splitTextToSize(`→ ${result.comment}`, 160);
+          doc.text(comment, 35, yPosition + 3);
+          yPosition += comment.length * 3;
+          doc.setFontSize(10);
+          doc.setTextColor(0, 0, 0);
+        }
+        
+        yPosition += 6;
+      });
+      
+      yPosition += 5;
+      
+      // === CONTRÔLE QUALITÉ PRODUIT ===
+      doc.setFillColor(232, 244, 232);
+      doc.rect(10, yPosition, 190, 45, 'F');
+      doc.setDrawColor(195, 230, 203);
+      doc.rect(10, yPosition, 190, 45, 'S');
+      
+      yPosition += 8;
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(...primaryColor);
+      doc.text('👕 CONTRÔLE QUALITÉ - PRODUIT', 15, yPosition);
+      
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      const productCriteria = [
+        { key: 'zip_test', label: 'Vérification zip' },
+        { key: 'button_check', label: 'Vérification boutonnage' },
+        { key: 'color_check', label: 'Vérification coloris' },
+        { key: 'finishing_check', label: 'Vérification finition/coutures' }
+      ];
+      
+      productCriteria.forEach((criterion, index) => {
+        const result = productQualityResults[criterion.key];
+        const status = result ? result.status : 'non_renseigné';
+        const statusText = status === 'ok' ? '✅ OK' : status === 'not_ok' ? '❌ PAS OK' : status === 'not_applicable' ? '➖ N/A' : '❓ Non renseigné';
+        const color = status === 'ok' ? successColor : status === 'not_ok' ? dangerColor : [108, 117, 125];
+        
+        doc.setTextColor(...color);
+        doc.setFont(undefined, 'bold');
+        doc.text(statusText, 15, yPosition);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont(undefined, 'normal');
+        doc.text(`${criterion.label}`, 35, yPosition);
+        
+        // Commentaire si présent
+        if (result && result.comment) {
+          doc.setFontSize(9);
+          doc.setTextColor(108, 117, 125);
+          const comment = doc.splitTextToSize(`→ ${result.comment}`, 160);
+          doc.text(comment, 35, yPosition + 3);
+          yPosition += comment.length * 3;
+          doc.setFontSize(10);
+          doc.setTextColor(0, 0, 0);
+        }
+        
+        yPosition += 6;
+      });
+      
+      yPosition += 10;
+      
+      // === CONTRÔLE EAN ===
+      if (yPosition > 240) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      doc.setFillColor(255, 243, 205);
+      doc.rect(10, yPosition, 190, Math.min(40 + referenceEanList.length * 6, 60), 'F');
+      doc.setDrawColor(255, 226, 167);
+      doc.rect(10, yPosition, 190, Math.min(40 + referenceEanList.length * 6, 60), 'S');
+      
+      yPosition += 8;
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(...primaryColor);
+      doc.text('🔍 CONTRÔLE EAN - RÉFÉRENCE', 15, yPosition);
+      
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      doc.text(`Référence: ${currentReference}`, 15, yPosition);
+      yPosition += 5;
+      doc.text(`Total EAN: ${referenceEanList.length} | Trouvés: ${checkedEans.size} | Non testés: ${nonTestedEans.size}`, 15, yPosition);
+      yPosition += 8;
+      
+      // Liste des EAN avec statut
+      referenceEanList.slice(0, 8).forEach((item) => { // Limiter pour éviter débordement
+        const eanCode = item[COL_EAN];
+        const isFound = checkedEans.has(eanCode);
+        const isNonTested = nonTestedEans.has(eanCode);
+        
+        let statusText, color;
+        if (isFound) {
+          statusText = '✅ TROUVÉ';
+          color = successColor;
+        } else if (isNonTested) {
+          statusText = '⏭️ NON TESTÉ';
+          color = warningColor;
+        } else {
+          statusText = '⏳ EN ATTENTE';
+          color = [108, 117, 125];
+        }
+        
+        doc.setTextColor(...color);
+        doc.setFont(undefined, 'bold');
+        doc.text(statusText, 15, yPosition);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Taille ${item[COL_TAILLE]}: ${eanCode}`, 50, yPosition);
+        yPosition += 5;
+      });
+      
+      if (referenceEanList.length > 8) {
+        doc.setTextColor(108, 117, 125);
+        doc.setFont(undefined, 'italic');
+        doc.text(`... et ${referenceEanList.length - 8} autres EAN`, 15, yPosition);
+        yPosition += 5;
+      }
+      
+      yPosition += 10;
+      
+      // === RÉSUMÉ GLOBAL ===
+      if (yPosition > 250) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      const packageIssues = Object.values(packageQualityResults).filter(result => result.status === 'not_ok').length;
+      const productIssues = Object.values(productQualityResults).filter(result => result.status === 'not_ok').length;
+      const totalIssues = packageIssues + productIssues;
+      const isConforme = totalIssues === 0;
+      
+      const resumeColor = isConforme ? successColor : dangerColor;
+      doc.setFillColor(...resumeColor);
+      doc.rect(10, yPosition, 190, 25, 'F');
+      
+      yPosition += 8;
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      const conformityStatus = isConforme ? '✅ PRODUIT CONFORME' : '❌ PRODUIT NON CONFORME';
+      doc.text(conformityStatus, 105, yPosition, { align: 'center' });
+      
+      yPosition += 8;
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'normal');
+      const summary = `Problèmes détectés: ${totalIssues} (${packageIssues} carton + ${productIssues} produit)`;
+      doc.text(summary, 105, yPosition, { align: 'center' });
+      
+      yPosition += 20;
+      
+      // === PHOTOS ===
+      const totalPhotos = Object.values(criterionPhotos).reduce((total, photos) => total + photos.length, 0);
+      if (totalPhotos > 0) {
+        if (yPosition > 200) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        doc.setFontSize(14);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(...primaryColor);
+        doc.text('📷 PHOTOS DU CONTRÔLE', 15, yPosition);
+        yPosition += 15;
+        
+        // Organiser les photos par critère
+        Object.entries(criterionPhotos).forEach(([criterionName, photos]) => {
+          if (photos.length === 0) return;
+          
+          doc.setFontSize(12);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(0, 0, 0);
+          doc.text(`${criterionName.replace(/_/g, ' ').toUpperCase()}:`, 15, yPosition);
+          yPosition += 8;
+          
+          photos.forEach((photo, index) => {
+            if (yPosition > 220) {
+              doc.addPage();
+              yPosition = 20;
+            }
+            
+            try {
+              const imgWidth = 80;
+              const imgHeight = 60;
+              doc.addImage(photo.data, 'JPEG', 15, yPosition, imgWidth, imgHeight);
+              
+              // Nom de la photo
+              doc.setFontSize(8);
+              doc.setTextColor(108, 117, 125);
+              doc.text(photo.name, 15, yPosition + imgHeight + 5);
+              doc.text(photo.timestamp, 15, yPosition + imgHeight + 10);
+              
+              yPosition += imgHeight + 15;
+            } catch (e) {
+              console.error('Erreur ajout image:', e);
+              doc.setTextColor(220, 53, 69);
+              doc.text(`❌ Erreur chargement: ${photo.name}`, 15, yPosition);
+              yPosition += 6;
+            }
+          });
+          
+          yPosition += 5;
+        });
+      }
+      
+      // === PIED DE PAGE ===
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(108, 117, 125);
+        doc.setFont(undefined, 'italic');
+        doc.text('Rapport généré automatiquement par Matrice Contrôle Qualité', 15, 290);
+        doc.text(`Page ${i}/${pageCount}`, 190, 290, { align: 'right' });
+      }
+      
+      // === SAUVEGARDE ===
+      const filename = `Controle_Qualite_${currentProduct[COL_REF]?.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_')}_${now.toISOString().split('T')[0]}.pdf`;
+      
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        // Mobile: ouvrir dans un nouvel onglet
+        window.open(doc.output('bloburl'), '_blank');
+      } else {
+        // Desktop: téléchargement automatique
+        doc.save(filename);
+      }
+      
+      alert(`📄 Rapport PDF généré avec succès !\n\nFichier: ${filename}\n\n• ${pageCount} page(s)\n• ${totalPhotos} photo(s) incluse(s)\n• Statut: ${isConforme ? 'CONFORME' : 'NON CONFORME'}`);
     }
 
     function resetQualityControl() {
