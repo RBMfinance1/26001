@@ -1546,7 +1546,7 @@
         
         if (isChecked) {
           statusClass = 'checked';
-          statusText = 'Trouvé ✅';
+          statusText = 'Verifie ✅';
           statusBadgeClass = 'found';
           actionButton = `<button onclick="resetEanStatus('${item[COL_EAN]}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">🔄 Reset</button>`;
         } else if (isNonTested) {
@@ -1588,7 +1588,7 @@
       const percentage = total > 0 ? (processed / total) * 100 : 0;
 
       document.getElementById('progressFill').style.width = percentage + '%';
-      document.getElementById('progressText').textContent = `${checked} trouvés + ${nonTested} non testés = ${processed} / ${total} EAN traités`;
+      document.getElementById('progressText').textContent = `${checked} verifies + ${nonTested} non testes = ${processed} / ${total} EAN traites`;
 
       // Activer le bouton de finalisation si tous les EAN sont traités (trouvés ou non testés)
       document.getElementById('completeValidateButton').disabled = processed < total;
@@ -1652,7 +1652,7 @@
           <h4>${statusIcon} ${statusTitle}</h4>
           <p>Référence <strong>${currentReference}</strong> : ${total} EAN au total</p>
           <ul style="margin: 10px 0; padding-left: 20px;">
-            <li><strong>${checked} EAN trouvés</strong> ✅</li>
+            <li><strong>${checked} EAN vérifiés</strong> ✅</li>
             ${nonTested > 0 ? `<li><strong>${nonTested} EAN non testés</strong> ⏭️</li>` : ''}
           </ul>
           <p>Vous pouvez maintenant finaliser le contrôle complet.</p>
@@ -1765,7 +1765,7 @@
       
       if (matchingItem) {
         if (checkedEans.has(scannedEan)) {
-          alert("ℹ️ Cet EAN a déjà été contrôlé et trouvé");
+          alert("ℹ️ Cet EAN a déjà été vérifié");
         } else {
           // Si l'EAN était marqué comme non testé, le retirer de cette liste
           if (nonTestedEans.has(scannedEan)) {
@@ -2107,7 +2107,7 @@
         yPosition += lineHeight;
         
         doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
-        doc.text('EAN trouves: ' + foundEan, 20, yPosition);
+        doc.text('EAN verifies: ' + foundEan, 20, yPosition);
         yPosition += lineHeight;
         
         doc.setTextColor(colors.warning[0], colors.warning[1], colors.warning[2]);
@@ -2129,7 +2129,7 @@
           
           let status, color;
           if (isFound) {
-            status = '[TROUVE]';
+            status = '[VERIFIE]';
             color = colors.success;
           } else if (isNonTested) {
             status = '[NON TESTE]';
@@ -2191,6 +2191,18 @@
         
         Object.entries(criterionPhotos).forEach(([criterionName, photos]) => {
           if (photos.length > 0) {
+            // Calculer l'espace nécessaire pour ce critère
+            const photosForThisCriterion = photos.length;
+            const rowsNeeded = Math.ceil(photosForThisCriterion / photosPerRow);
+            const spaceNeeded = 15 + (rowsNeeded * (photoHeight + 20)); // Titre + photos
+            
+            // Vérifier si on a assez de place pour le titre ET au moins une ligne de photos
+            if (yPosition + spaceNeeded > pageHeight - 20) {
+              doc.addPage();
+              yPosition = 20;
+              photoIndex = 0; // Reset index photos pour nouvelle page
+            }
+            
             // Titre du critère
             doc.setFontSize(12);
             doc.setFont(undefined, 'bold');
@@ -2212,34 +2224,40 @@
             doc.setTextColor(0, 0, 0);
             yPosition += 10;
             
+            // Sauvegarder la position de départ pour ce critère
+            const startYForCriterion = yPosition;
+            let maxYForCriterion = yPosition;
+            
             photos.forEach((photo, index) => {
-              const row = Math.floor(photoIndex / photosPerRow);
-              const col = photoIndex % photosPerRow;
+              const row = Math.floor(index / photosPerRow);
+              const col = index % photosPerRow;
               
               const x = 20 + col * (photoWidth + marginBetweenPhotos);
-              const y = yPosition + row * (photoHeight + 20) - (photoIndex > 0 ? row * 20 : 0);
+              const y = startYForCriterion + row * (photoHeight + 20);
               
-              // Vérifier si on doit ajouter une nouvelle page
+              // Vérifier si cette photo dépasse la page
               if (y + photoHeight > pageHeight - 10) {
+                // Ajouter une nouvelle page et continuer
                 doc.addPage();
                 yPosition = 20;
-                photoIndex = 0;
+                startYForCriterion = yPosition;
                 
-                const newRow = Math.floor(photoIndex / photosPerRow);
-                const newCol = photoIndex % photosPerRow;
-                const newX = 20 + newCol * (photoWidth + marginBetweenPhotos);
-                const newY = yPosition + newRow * (photoHeight + 20);
+                // Recalculer la position pour la nouvelle page
+                const newRow = Math.floor(index / photosPerRow) - Math.floor(photos.findIndex(p => photos.indexOf(p) === index && y + photoHeight > pageHeight - 10) / photosPerRow);
+                const newY = startYForCriterion + newRow * (photoHeight + 20);
                 
                 try {
-                  doc.addImage(photo.data, 'JPEG', newX, newY, photoWidth, photoHeight);
+                  doc.addImage(photo.data, 'JPEG', x, newY, photoWidth, photoHeight);
                   doc.setFontSize(8);
                   doc.setTextColor(100, 100, 100);
-                  doc.text(photo.timestamp, newX, newY + photoHeight + 8);
+                  doc.text(photo.timestamp, x, newY + photoHeight + 8);
                   doc.setTextColor(0, 0, 0);
+                  maxYForCriterion = Math.max(maxYForCriterion, newY + photoHeight + 15);
                 } catch (e) {
                   console.error('Erreur lors de l\'ajout de l\'image:', e);
                   doc.setFontSize(9);
-                  doc.text('[Image non disponible: ' + photo.name + ']', newX, newY + 20);
+                  doc.text('[Image non disponible: ' + photo.name + ']', x, newY + 20);
+                  maxYForCriterion = Math.max(maxYForCriterion, newY + 30);
                 }
               } else {
                 try {
@@ -2248,19 +2266,18 @@
                   doc.setTextColor(100, 100, 100);
                   doc.text(photo.timestamp, x, y + photoHeight + 8);
                   doc.setTextColor(0, 0, 0);
+                  maxYForCriterion = Math.max(maxYForCriterion, y + photoHeight + 15);
                 } catch (e) {
                   console.error('Erreur lors de l\'ajout de l\'image:', e);
                   doc.setFontSize(9);
                   doc.text('[Image non disponible: ' + photo.name + ']', x, y + 20);
+                  maxYForCriterion = Math.max(maxYForCriterion, y + 30);
                 }
               }
-              
-              photoIndex++;
             });
             
-            // Ajuster yPosition après les photos de ce critère
-            const rowsUsed = Math.ceil(photos.length / photosPerRow);
-            yPosition += rowsUsed * (photoHeight + 20) + 10;
+            // Ajuster yPosition pour le prochain critère
+            yPosition = maxYForCriterion + 10;
           }
         });
       }
